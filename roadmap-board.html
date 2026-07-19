@@ -139,7 +139,7 @@
   /* hover controls (dummy for now) */
   .card-actions {
     position: absolute; top: 3px; right: 3px;
-    display: none; gap: 1px;
+    display: none; align-items: center; gap: 1px;
     padding: 1px 2px; border-radius: 6px;
     background: var(--panel);
   }
@@ -155,10 +155,10 @@
   .card-actions svg { width: 14px; height: 14px; display: block; }
   /* play gets a snug rounded-rect frame so it reads as a button, not a caret */
   .card-actions button[data-action="play"] {
-    width: auto; height: auto; padding: 3px 4px;
+    width: auto; height: auto; padding: 1.5px 3px;
     border: 1px solid currentColor; border-radius: 3px;
   }
-  .card-actions button[data-action="play"] svg { width: auto; height: 11px; }
+  .card-actions button[data-action="play"] svg { width: auto; height: 9px; }
   .card .notes { display: none; color: var(--muted); margin-top: 3px; font-size: 10.5px; white-space: pre-wrap; }
   .card.open .notes { display: block; }
   .card .when { color: var(--muted); margin-top: 3px; font-size: 8.5px; text-transform: uppercase; letter-spacing: .04em; }
