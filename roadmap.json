@@ -1,0 +1,125 @@
+{
+  "project": "VibeMap",
+  "updated_at": "2026-07-19T21:33:09Z",
+  "items": [
+    {
+      "id": "kanban-board",
+      "title": "Self-contained kanban board",
+      "status": "done",
+      "notes": "roadmap-board.html; polls roadmap.json every 2s, light/dark, glows recent items.",
+      "updated_at": "2026-07-19T15:00:00Z"
+    },
+    {
+      "id": "vibemap-skill",
+      "title": "vibemap skill",
+      "status": "done",
+      "notes": "Teaches Claude to keep roadmap.json current during chat.",
+      "updated_at": "2026-07-19T15:00:00Z"
+    },
+    {
+      "id": "installer",
+      "title": "One-line installer",
+      "status": "done",
+      "notes": "install.sh copies skill + board to ~/.claude/skills/vibemap/.",
+      "updated_at": "2026-07-19T15:00:00Z"
+    },
+    {
+      "id": "license-readme",
+      "title": "README + MIT license",
+      "status": "done",
+      "notes": "",
+      "updated_at": "2026-07-19T15:00:00Z"
+    },
+    {
+      "id": "remote-repo",
+      "title": "Remote GitHub repo",
+      "status": "done",
+      "notes": "github.com/mmyslin/vibemap (private).",
+      "updated_at": "2026-07-19T15:00:00Z"
+    },
+    {
+      "id": "scoping-docs",
+      "title": "Scoping docs (global / per-project / disable)",
+      "status": "done",
+      "notes": "README section on skill scoping + skillOverrides.",
+      "updated_at": "2026-07-19T20:22:11Z"
+    },
+    {
+      "id": "make-public",
+      "title": "Make the repo public",
+      "status": "next",
+      "notes": "gh repo edit --visibility public when ready.",
+      "updated_at": "2026-07-19T21:22:11Z"
+    },
+    {
+      "id": "readme-screenshots",
+      "title": "Add screenshots / GIF to README",
+      "status": "backlog",
+      "notes": "Show the board beside chat.",
+      "updated_at": "2026-07-19T15:00:00Z"
+    },
+    {
+      "id": "instant-updates",
+      "title": "Instant updates (SSE/websocket)",
+      "status": "backlog",
+      "notes": "Replace 2s polling for zero-lag refresh.",
+      "updated_at": "2026-07-19T15:00:00Z"
+    },
+    {
+      "id": "board-editing",
+      "title": "Edit/reorder cards in the board UI",
+      "status": "backlog",
+      "notes": "Drag-and-drop; write back to roadmap.json.",
+      "updated_at": "2026-07-19T15:00:00Z"
+    },
+    {
+      "id": "mcp-version",
+      "title": "MCP server version",
+      "status": "backlog",
+      "notes": "Structured roadmap tools; update board outside an active chat session.",
+      "updated_at": "2026-07-19T15:00:00Z"
+    },
+    {
+      "id": "plugin-distribution",
+      "title": "Distribute as a Claude Code plugin",
+      "status": "backlog",
+      "notes": "Marketplace entry so install is one command.",
+      "updated_at": "2026-07-19T15:00:00Z"
+    },
+    {
+      "id": "compact-ui",
+      "title": "Compact UI mode",
+      "status": "done",
+      "notes": "Extremely compact by default: trimmed padding, smaller type, all-caps tracked labels.",
+      "updated_at": "2026-07-19T21:33:09Z"
+    },
+    {
+      "id": "collapsible-swimlanes",
+      "title": "Collapsible swimlanes",
+      "status": "backlog",
+      "notes": "Fold columns/groups to focus on active work.",
+      "updated_at": "2026-07-19T21:25:51Z"
+    },
+    {
+      "id": "external-integrations",
+      "title": "External board/ticketing integrations",
+      "status": "backlog",
+      "notes": "Sync with GitHub Issues, Linear, Jira, etc.",
+      "updated_at": "2026-07-19T21:25:51Z"
+    },
+    {
+      "id": "click-card-to-implement",
+      "title": "Click a card to start implementing",
+      "status": "backlog",
+      "notes": "Clicking a card tells Claude to begin work on that item.",
+      "updated_at": "2026-07-19T21:28:08Z"
+    },
+    {
+      "id": "scrollable-swimlanes",
+      "title": "Independently scrollable swimlanes",
+      "status": "backlog",
+      "notes": "When stacked vertically (tall/narrow window), each swimlane scrolls on its own.",
+      "updated_at": "2026-07-19T21:28:08Z"
+    }
+  ]
+}
