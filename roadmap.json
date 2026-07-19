@@ -1,6 +1,6 @@
 {
   "project": "VibeMap",
-  "updated_at": "2026-07-19T22:49:05Z",
+  "updated_at": "2026-07-19T23:02:15Z",
   "items": [
     {
       "id": "kanban-board",
@@ -110,9 +110,9 @@
     {
       "id": "click-card-to-implement",
       "title": "Click a card to start implementing",
-      "status": "backlog",
-      "notes": "Clicking a card tells Claude to begin work on that item.",
-      "updated_at": "2026-07-19T21:28:08Z"
+      "status": "done",
+      "notes": "Delivered via the card play button: copies a 'start implementing' prompt to paste into Claude. Copy confirmed working in the desktop pane.",
+      "updated_at": "2026-07-19T23:02:15Z"
     },
     {
       "id": "scrollable-swimlanes",
@@ -146,8 +146,8 @@
       "id": "card-hover-controls",
       "title": "Card hover controls (play / edit / expand)",
       "status": "in_progress",
-      "notes": "Play copies a templated, editable prompt (title + notes + 'start implementing') to the clipboard; paste into the prompt, edit, send. Edit/expand still dummy.",
-      "updated_at": "2026-07-19T22:49:05Z"
+      "notes": "Play working (execCommand copy + async + pre-selected-text fallback), confirmed in the desktop pane. Edit/expand still dummy.",
+      "updated_at": "2026-07-19T23:02:15Z"
     }
   ]
 }
