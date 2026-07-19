@@ -48,6 +48,34 @@ cd your-project && python3 -m http.server 7777
 # then open http://127.0.0.1:7777/roadmap-board.html
 ```
 
+## Scoping: everywhere, one project, or off
+
+Where you put the skill folder decides where `/vibemap` is available. Claude Code picks up added/edited/removed skills live — no restart needed (the one exception is creating `~/.claude/skills/` for the very first time).
+
+**Everywhere (all your projects).** This is what `install.sh` does — it copies the skill to `~/.claude/skills/vibemap/`, which every project reads, on all surfaces (CLI, desktop app, IDE extension). Nothing else to do.
+
+**Just one project.** Instead of installing globally, drop the folder at `<project>/.claude/skills/vibemap/` and commit it:
+
+```
+<project>/.claude/skills/vibemap/SKILL.md
+<project>/.claude/skills/vibemap/roadmap-board.html
+```
+
+Now `/vibemap` exists only in that repo, and anyone who clones it gets the board for free — no install step. If the skill exists both globally and in a project, the **project copy wins** there.
+
+**Turn it off without deleting it.** Use `skillOverrides` in `.claude/settings.json` (per project) or `~/.claude/settings.json` (global):
+
+```json
+{ "skillOverrides": { "vibemap": "off" } }
+```
+
+- `"on"` — active (default)
+- `"off"` — hidden everywhere
+- `"user-invocable-only"` — Claude won't trigger it automatically, but you can still run `/vibemap`
+- `"name-only"` — listed without its description
+
+Remove the entry (or set `"on"`) to re-enable. Run `/skills` to see every skill and its current state.
+
 ## Notes
 
 - The board is served over `127.0.0.1` (localhost only). It exposes the folder it's served from, so serve your project root, not your home directory. Don't bind it to `0.0.0.0`.
