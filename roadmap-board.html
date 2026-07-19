@@ -165,6 +165,17 @@
   .card .when { color: var(--muted); margin-top: 3px; font-size: 8.5px; text-transform: uppercase; letter-spacing: .04em; }
   .empty { color: var(--muted); font-size: 10px; font-style: italic; padding: 1px 3px; }
   @keyframes fadein { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+  #toast {
+    position: fixed; left: 50%; bottom: 10px;
+    transform: translateX(-50%) translateY(6px);
+    background: var(--panel); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 4px 11px; font-size: 11px;
+    box-shadow: var(--shadow); z-index: 10;
+    opacity: 0; pointer-events: none;
+    transition: opacity .15s ease, transform .15s ease;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 </style>
 </head>
 <body>
@@ -212,6 +223,35 @@ function rel(ts) {
   return Math.round(h / 24) + "d ago";
 }
 function esc(x) { return (x ?? "").toString().replace(/[&<>]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;" }[c])); }
+
+function toast(msg) {
+  let t = document.getElementById("toast");
+  if (!t) { t = document.createElement("div"); t.id = "toast"; document.body.appendChild(t); }
+  t.textContent = msg;
+  requestAnimationFrame(() => t.classList.add("show"));
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => t.classList.remove("show"), 1800);
+}
+
+// Play button: send the card's text to Claude. Uses a host bridge if one is
+// injected (window.sendPrompt / window.claude.sendPrompt); otherwise copies to
+// the clipboard so it can be pasted into the prompt.
+function sendCardToClaude(card) {
+  if (!card) return;
+  const title = (card.querySelector(".title")?.textContent || "").trim();
+  const notes = (card.querySelector(".notes")?.textContent || "").trim();
+  const text = notes ? `${title}\n\n${notes}` : title;
+  if (!text) return;
+  const bridge = typeof window.sendPrompt === "function" ? window.sendPrompt
+    : (window.claude && typeof window.claude.sendPrompt === "function") ? window.claude.sendPrompt.bind(window.claude)
+    : null;
+  if (bridge) { bridge(text); toast("Sent to Claude"); return; }
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).then(() => toast("Copied — paste into Claude")).catch(() => toast("Copy failed"));
+  } else {
+    toast("Copy unavailable");
+  }
+}
 
 function render(data) {
   document.getElementById("project").textContent = data.project || "Roadmap";
@@ -288,7 +328,8 @@ document.getElementById("board").addEventListener("click", (e) => {
   const actionBtn = e.target.closest(".card-actions button");
   if (actionBtn) {
     e.stopPropagation();
-    // TODO: wire up play (send to Claude) / edit / expand — dummy no-op for now
+    if (actionBtn.dataset.action === "play") sendCardToClaude(actionBtn.closest(".card"));
+    // edit / expand still to come
     return;
   }
   const card = e.target.closest(".card.has-notes");
