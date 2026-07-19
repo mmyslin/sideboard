@@ -1,7 +1,7 @@
 {
   "project": "VibeMap",
-  "seq": 25,
-  "updated_at": "2026-07-19T23:38:36Z",
+  "seq": 26,
+  "updated_at": "2026-07-19T23:41:49Z",
   "items": [
     {
       "id": "kanban-board",
@@ -194,6 +194,14 @@
       "status": "done",
       "notes": "Skill resolves '#N' mentions (e.g. 'do #10') to the item whose ref==N and acts on it.",
       "updated_at": "2026-07-19T23:30:48Z"
+    },
+    {
+      "id": "add-items-from-board",
+      "ref": 25,
+      "title": "Add new items from the board (+)",
+      "status": "backlog",
+      "notes": "A '+' affordance to create new backlog cards directly on the board. Needs board write access — same dependency as inline Edit / move-on-click.",
+      "updated_at": "2026-07-19T23:41:49Z"
     }
   ]
 }
