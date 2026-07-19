@@ -1,7 +1,7 @@
 {
   "project": "VibeMap",
-  "seq": 24,
-  "updated_at": "2026-07-19T23:26:57Z",
+  "seq": 25,
+  "updated_at": "2026-07-19T23:30:48Z",
   "items": [
     {
       "id": "kanban-board",
@@ -186,6 +186,14 @@
       "notes": "Each card shows a stable #N (never reused), assigned from a top-level seq counter; replaces the 'updated' subtitle (kept as a hover tooltip).",
       "updated_at": "2026-07-19T23:26:57Z",
       "ref": 23
+    },
+    {
+      "id": "resolve-ref-mentions",
+      "ref": 24,
+      "title": "Resolve #N references in chat",
+      "status": "done",
+      "notes": "Skill resolves '#N' mentions (e.g. 'do #10') to the item whose ref==N and acts on it.",
+      "updated_at": "2026-07-19T23:30:48Z"
     }
   ]
 }

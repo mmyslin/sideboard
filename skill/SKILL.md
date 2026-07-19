@@ -43,6 +43,15 @@ Make the edit by reading `roadmap.json`, modifying the item, and writing it back
 as valid JSON. Keep it terse — this is a glanceable board, not an issue tracker.
 Mention roadmap changes in one short line; don't derail the main task.
 
+## Referring to cards by number
+
+The user may name a card by its number — `#10`, "do #10", "what's #21?",
+"move #7 to next", "close out #3". Resolve it to the item in `roadmap.json`
+whose `ref` equals that number, then act on that item (implement it, change its
+status, edit its notes, or just answer about it). `#N` means `ref` — never the
+array position or the kebab `id`. If no item has that `ref`, say so plainly
+instead of guessing at the closest match.
+
 ## Setup / bootstrap (first run in a project)
 
 If `roadmap.json` does not exist in the project root:
