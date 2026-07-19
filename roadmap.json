@@ -1,6 +1,6 @@
 {
   "project": "VibeMap",
-  "updated_at": "2026-07-19T21:43:34Z",
+  "updated_at": "2026-07-19T21:52:56Z",
   "items": [
     {
       "id": "kanban-board",
@@ -117,9 +117,9 @@
     {
       "id": "scrollable-swimlanes",
       "title": "Independently scrollable swimlanes",
-      "status": "backlog",
-      "notes": "When stacked vertically (tall/narrow window), each swimlane scrolls on its own.",
-      "updated_at": "2026-07-19T21:28:08Z"
+      "status": "done",
+      "notes": "Each lane bounded with its own scroll; page no longer overflows when lanes stack vertically.",
+      "updated_at": "2026-07-19T21:52:56Z"
     },
     {
       "id": "palette-card-polish",
@@ -127,6 +127,13 @@
       "status": "done",
       "notes": "De-bolded titles; click-to-expand descriptions (collapsed by default); warm palette matching Claude Code.",
       "updated_at": "2026-07-19T21:43:34Z"
+    },
+    {
+      "id": "resizable-lanes",
+      "title": "Resizable lanes (drag handles)",
+      "status": "done",
+      "notes": "Drag the border between two lanes to reallocate space; vertical handles side-by-side, horizontal when stacked. Min-size clamp prevents collapse.",
+      "updated_at": "2026-07-19T21:52:56Z"
     }
   ]
 }

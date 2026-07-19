@@ -62,31 +62,66 @@
   .dot.err { background: #dc2626; box-shadow: 0 0 0 2.5px rgba(220,38,38,.22); }
   .board {
     flex: 1;
-    display: grid;
-    grid-template-columns: repeat(4, minmax(140px, 1fr));
-    gap: 6px;
+    display: flex;
+    flex-direction: row;
     padding: 6px;
-    overflow: auto;
+    overflow: hidden;
+    min-height: 0;
   }
-  @media (max-width: 620px) { .board { grid-template-columns: repeat(2, 1fr); } }
-  @media (max-width: 360px) { .board { grid-template-columns: 1fr; } }
+  @media (max-width: 640px) { .board { flex-direction: column; } }
   .col {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
     background: var(--panel-2);
     border: 1px solid var(--border);
     border-radius: 7px;
     padding: 5px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    min-height: 44px;
+    overflow: hidden;
   }
   .col-head {
+    flex: none;
     display: flex; align-items: center; gap: 6px;
     font-weight: 700; font-size: 9.5px;
     text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
-    padding: 2px 3px 4px;
-    position: sticky; top: 0; z-index: 1;
-    background: var(--panel-2);
+    padding: 2px 3px 5px;
+  }
+  .col-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-right: 2px;
+  }
+  /* Drag handles on the borders between lanes (vertical when side-by-side, horizontal when stacked) */
+  .resizer {
+    flex: none;
+    align-self: stretch;
+    position: relative;
+    width: 8px;
+    cursor: col-resize;
+    touch-action: none;
+  }
+  .resizer::before {
+    content: "";
+    position: absolute;
+    top: 10px; bottom: 10px; left: 50%;
+    width: 2px; transform: translateX(-50%);
+    background: var(--border);
+    border-radius: 2px;
+    transition: background .12s ease;
+  }
+  .resizer:hover::before, .resizer.dragging::before { background: var(--accent); }
+  @media (max-width: 640px) {
+    .resizer { width: auto; height: 8px; cursor: row-resize; }
+    .resizer::before {
+      top: 50%; bottom: auto; left: 10px; right: 10px;
+      width: auto; height: 2px; transform: translateY(-50%);
+    }
   }
   .col-head .bar { width: 7px; height: 7px; border-radius: 2px; flex: none; }
   .col-head .count { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -137,6 +172,7 @@ const POLL_MS = 2000;
 
 let lastRaw = "";
 const expanded = new Set();   // item ids whose description is expanded (persists across re-renders)
+const grow = {};              // per-lane flex-grow, set by dragging resizers (persists across re-renders)
 
 function rel(ts) {
   if (!ts) return "";
@@ -159,13 +195,23 @@ function render(data) {
   const now = Date.now();
   const items = Array.isArray(data.items) ? data.items : [];
   board.innerHTML = "";
-  for (const col of COLUMNS) {
+  COLUMNS.forEach((col, idx) => {
     const inCol = items.filter(i => (i.status || "backlog") === col.key);
+    if (idx > 0) {
+      const rez = document.createElement("div");
+      rez.className = "resizer";
+      rez.dataset.prev = COLUMNS[idx - 1].key;
+      rez.dataset.next = col.key;
+      board.appendChild(rez);
+    }
     const el = document.createElement("div");
     el.className = "col";
-    el.innerHTML = `<div class="col-head"><span class="bar" style="background:${col.color}"></span>${col.label}<span class="count">${inCol.length}</span></div>`;
+    el.dataset.key = col.key;
+    el.style.flexGrow = grow[col.key] ?? 1;
+    el.innerHTML = `<div class="col-head"><span class="bar" style="background:${col.color}"></span>${col.label}<span class="count">${inCol.length}</span></div><div class="col-body"></div>`;
+    const body = el.querySelector(".col-body");
     if (inCol.length === 0) {
-      el.insertAdjacentHTML("beforeend", `<div class="empty">—</div>`);
+      body.insertAdjacentHTML("beforeend", `<div class="empty">—</div>`);
     }
     for (const it of inCol) {
       const recent = it.updated_at && (now - new Date(it.updated_at).getTime()) < RECENT_MS;
@@ -173,7 +219,7 @@ function render(data) {
       const id = it.id != null ? String(it.id) : "";
       const isOpen = hasNotes && expanded.has(id);
       const cls = ["card", recent && "recent", hasNotes && "has-notes", isOpen && "open"].filter(Boolean).join(" ");
-      el.insertAdjacentHTML("beforeend", `
+      body.insertAdjacentHTML("beforeend", `
         <div class="${cls}" data-id="${esc(id)}">
           <div class="card-head">
             <span class="title">${esc(it.title)}</span>
@@ -184,7 +230,7 @@ function render(data) {
         </div>`);
     }
     board.appendChild(el);
-  }
+  });
 }
 
 function setStatus(state, data) {
@@ -217,6 +263,52 @@ document.getElementById("board").addEventListener("click", (e) => {
   if (expanded.has(id)) expanded.delete(id); else expanded.add(id);
   card.classList.toggle("open");
 });
+
+// Drag a resizer to reallocate space between its two neighbouring lanes.
+(function enableResize() {
+  const board = document.getElementById("board");
+  let drag = null;
+  board.addEventListener("pointerdown", (e) => {
+    const rez = e.target.closest(".resizer");
+    if (!rez) return;
+    const prev = board.querySelector(`.col[data-key="${rez.dataset.prev}"]`);
+    const next = board.querySelector(`.col[data-key="${rez.dataset.next}"]`);
+    if (!prev || !next) return;
+    const stacked = window.matchMedia("(max-width: 640px)").matches;
+    const gPrev = parseFloat(prev.style.flexGrow) || 1;
+    const gNext = parseFloat(next.style.flexGrow) || 1;
+    drag = {
+      rez, prev, next, stacked,
+      start: stacked ? e.clientY : e.clientX,
+      combinedPx: (stacked ? prev.offsetHeight + next.offsetHeight : prev.offsetWidth + next.offsetWidth),
+      combinedGrow: gPrev + gNext,
+      gPrev, prevKey: rez.dataset.prev, nextKey: rez.dataset.next,
+    };
+    rez.classList.add("dragging");
+    document.body.style.userSelect = "none";
+    try { rez.setPointerCapture(e.pointerId); } catch {}
+    e.preventDefault();
+  });
+  board.addEventListener("pointermove", (e) => {
+    if (!drag || !drag.combinedPx) return;
+    const pos = drag.stacked ? e.clientY : e.clientX;
+    const frac = (pos - drag.start) / drag.combinedPx;
+    const min = drag.combinedGrow * 0.1;
+    let gPrev = Math.max(min, Math.min(drag.combinedGrow - min, drag.gPrev + frac * drag.combinedGrow));
+    const gNext = drag.combinedGrow - gPrev;
+    grow[drag.prevKey] = gPrev; grow[drag.nextKey] = gNext;
+    drag.prev.style.flexGrow = gPrev; drag.next.style.flexGrow = gNext;
+  });
+  const end = (e) => {
+    if (!drag) return;
+    drag.rez.classList.remove("dragging");
+    document.body.style.userSelect = "";
+    try { drag.rez.releasePointerCapture(e.pointerId); } catch {}
+    drag = null;
+  };
+  board.addEventListener("pointerup", end);
+  board.addEventListener("pointercancel", end);
+})();
 
 poll();
 setInterval(poll, POLL_MS);
