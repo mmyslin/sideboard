@@ -305,7 +305,7 @@ function copyText(text) {
 }
 
 function render(data) {
-  document.getElementById("project").textContent = data.project || "Roadmap";
+  document.getElementById("project").textContent = "Roadmap";
   const board = document.getElementById("board");
   const items = Array.isArray(data.items) ? data.items : [];
   board.innerHTML = "";
