@@ -152,7 +152,7 @@
   .card-actions svg { width: 14px; height: 14px; display: block; }
   .card .notes { display: none; color: var(--muted); margin-top: 3px; font-size: 10.5px; white-space: pre-wrap; }
   .card.open .notes { display: block; }
-  .card .when { color: var(--muted); margin-top: 3px; font-size: 8.5px; text-transform: uppercase; letter-spacing: .04em; }
+  .card .ref { color: var(--muted); margin-top: 3px; font-size: 9px; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
   .empty { color: var(--muted); font-size: 10px; font-style: italic; padding: 1px 3px; }
   @keyframes fadein { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
   #toast {
@@ -343,7 +343,7 @@ function render(data) {
             <span class="title">${esc(it.title)}</span>
           </div>
           ${hasNotes ? `<div class="notes">${esc(it.notes)}</div>` : ""}
-          ${it.updated_at ? `<div class="when">updated ${rel(it.updated_at)}</div>` : ""}
+          ${it.ref != null ? `<div class="ref"${it.updated_at ? ` title="updated ${rel(it.updated_at)}"` : ""}>#${esc(it.ref)}</div>` : ""}
         </div>`);
     }
     board.appendChild(el);

@@ -15,9 +15,10 @@ auto-updating roadmap.
 ```json
 {
   "project": "Project Name",
+  "seq": 24,
   "updated_at": "2026-01-01T00:00:00Z",
   "items": [
-    { "id": "kebab-id", "title": "Short feature title",
+    { "id": "kebab-id", "ref": 12, "title": "Short feature title",
       "status": "backlog|next|in_progress|done",
       "notes": "optional one-liner",
       "updated_at": "2026-01-01T00:00:00Z" }
@@ -27,7 +28,8 @@ auto-updating roadmap.
 
 - **Statuses / columns:** `backlog` → Backlog, `next` → Next Up, `in_progress` → In Progress, `done` → Done.
 - `id` is a stable kebab-case slug; never reuse or renumber ids.
-- Every write updates the changed item's `updated_at` AND the top-level `updated_at`, both ISO-8601 UTC. The board glows any item touched in the last 30s, so accurate timestamps matter.
+- `ref` is the card's human-facing number (shown as `#N`). When adding an item, set its `ref` to the top-level `seq`, then increment `seq`. **Never reuse a ref**, even after an item is deleted — always hand out `seq` and bump it.
+- Every write updates the changed item's `updated_at` AND the top-level `updated_at`, both ISO-8601 UTC.
 
 ## When to update (do this proactively, without being asked)
 
