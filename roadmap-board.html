@@ -173,6 +173,29 @@
     transition: opacity .15s ease, transform .15s ease;
   }
   #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #copy-fallback {
+    position: fixed; inset: 0; z-index: 20;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,.45);
+  }
+  #copy-fallback .cf-box {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px; width: min(90%, 340px);
+    box-shadow: 0 8px 30px rgba(0,0,0,.4);
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  #copy-fallback .cf-msg { font-size: 11.5px; color: var(--text); }
+  #copy-fallback textarea {
+    width: 100%; height: 92px; resize: none;
+    font: 11px/1.4 ui-monospace, Menlo, monospace;
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; padding: 6px;
+  }
+  #copy-fallback .cf-close {
+    align-self: flex-end; font-size: 11px; padding: 3px 11px;
+    border: 1px solid var(--border); border-radius: 5px;
+    background: var(--panel-2); color: var(--text); cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -245,11 +268,47 @@ function sendCardToClaude(card) {
     : (window.claude && typeof window.claude.sendPrompt === "function") ? window.claude.sendPrompt.bind(window.claude)
     : null;
   if (bridge) { bridge(text); toast("Sent to Claude"); return; }
+  copyText(text).then((ok) => {
+    if (ok) toast("Copied — ⌘V into the prompt to edit & send");
+    else showCopyFallback(text);   // clipboard blocked in this pane — let the user copy manually
+  });
+}
+
+// Last-resort copy: show the text pre-selected so the user can press ⌘C.
+// Native selection-copy is always allowed, even where the clipboard APIs are blocked.
+function showCopyFallback(text) {
+  document.getElementById("copy-fallback")?.remove();
+  const m = document.createElement("div");
+  m.id = "copy-fallback";
+  m.innerHTML = `<div class="cf-box"><div class="cf-msg">Copy blocked here — press ⌘C, then paste into the prompt.</div><textarea readonly></textarea><button type="button" class="cf-close">Close</button></div>`;
+  const ta = m.querySelector("textarea");
+  ta.value = text;
+  const close = () => m.remove();
+  m.addEventListener("click", (e) => { if (e.target === m) close(); });
+  m.querySelector(".cf-close").addEventListener("click", close);
+  document.body.appendChild(m);
+  ta.focus(); ta.select();
+}
+
+// Copy that works inside embedded panes. The async Clipboard API rejects with
+// "Document is not focused" there, so try the in-gesture execCommand path first
+// (copies the current selection during a real click) and fall back to the async API.
+function copyText(text) {
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.cssText = "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;";
+    document.body.appendChild(ta);
+    ta.focus(); ta.select(); ta.setSelectionRange(0, text.length);
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    if (ok) return Promise.resolve(true);
+  } catch (_) { /* fall through to async API */ }
   if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(text).then(() => toast("Copied — ⌘V into the prompt to edit & send")).catch(() => toast("Copy failed"));
-  } else {
-    toast("Copy unavailable");
+    return navigator.clipboard.writeText(text).then(() => true).catch(() => false);
   }
+  return Promise.resolve(false);
 }
 
 function render(data) {
