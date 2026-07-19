@@ -20,7 +20,6 @@
     --c-next: #d97706;
     --c-progress: #2f6fe0;
     --c-done: #1a9e4b;
-    --pulse: rgba(201,100,66,.5);
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -32,7 +31,6 @@
       --border: #38352f;
       --shadow: 0 1px 2px rgba(0,0,0,.4);
       --accent: #d97757;
-      --pulse: rgba(217,119,87,.5);
     }
   }
   * { box-sizing: border-box; }
@@ -132,7 +130,6 @@
     box-shadow: var(--shadow);
     animation: fadein .2s ease;
   }
-  .card.recent { box-shadow: 0 0 0 1.5px var(--pulse), var(--shadow); }
   .card-head { display: flex; align-items: flex-start; gap: 5px; }
   .card.has-notes .card-head { cursor: pointer; }
   .card .title { font-weight: 400; font-size: 12.5px; flex: 1; min-width: 0; }
@@ -195,7 +192,6 @@ const COLUMNS = [
   { key: "in_progress", label: "In Progress", color: "var(--c-progress)" },
   { key: "done",        label: "Done",        color: "var(--c-done)"     },
 ];
-const RECENT_MS = 30000;   // highlight items touched in the last 30s
 const POLL_MS = 2000;
 
 // Card hover-control icons (inline SVG, self-contained)
@@ -256,7 +252,6 @@ function sendCardToClaude(card) {
 function render(data) {
   document.getElementById("project").textContent = data.project || "Roadmap";
   const board = document.getElementById("board");
-  const now = Date.now();
   const items = Array.isArray(data.items) ? data.items : [];
   board.innerHTML = "";
   COLUMNS.forEach((col, idx) => {
@@ -278,11 +273,10 @@ function render(data) {
       body.insertAdjacentHTML("beforeend", `<div class="empty">—</div>`);
     }
     for (const it of inCol) {
-      const recent = it.updated_at && (now - new Date(it.updated_at).getTime()) < RECENT_MS;
       const hasNotes = !!it.notes;
       const id = it.id != null ? String(it.id) : "";
       const isOpen = hasNotes && expanded.has(id);
-      const cls = ["card", recent && "recent", hasNotes && "has-notes", isOpen && "open"].filter(Boolean).join(" ");
+      const cls = ["card", hasNotes && "has-notes", isOpen && "open"].filter(Boolean).join(" ");
       body.insertAdjacentHTML("beforeend", `
         <div class="${cls}" data-id="${esc(id)}">
           <div class="card-actions">
