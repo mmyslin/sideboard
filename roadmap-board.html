@@ -156,8 +156,9 @@
   /* play gets a snug rounded-rect frame so it reads as a button, not a caret */
   .card-actions button[data-action="play"] {
     width: auto; height: auto; padding: 1.5px 3px;
-    border: 1px solid currentColor; border-radius: 3px;
+    border: 1px solid transparent; border-radius: 3px;   /* frame revealed on hover */
   }
+  .card-actions button[data-action="play"]:hover { border-color: currentColor; background: none; }
   .card-actions button[data-action="play"] svg { width: auto; height: 9px; }
   .card .notes { display: none; color: var(--muted); margin-top: 3px; font-size: 10.5px; white-space: pre-wrap; }
   .card.open .notes { display: block; }
