@@ -1,7 +1,7 @@
 {
   "project": "VibeMap",
-  "seq": 27,
-  "updated_at": "2026-07-19T23:43:11Z",
+  "seq": 28,
+  "updated_at": "2026-07-19T23:44:45Z",
   "items": [
     {
       "id": "kanban-board",
@@ -210,6 +210,14 @@
       "status": "backlog",
       "notes": "Analyze backlog items for technical dependencies and generate recommended sequences (build orders) of items.",
       "updated_at": "2026-07-19T23:43:11Z"
+    },
+    {
+      "id": "sequence-ui",
+      "ref": 27,
+      "title": "UI for recommended sequences",
+      "status": "backlog",
+      "notes": "Surface the recommended build sequences from #26 on the board (ordering, dependency hints).",
+      "updated_at": "2026-07-19T23:44:45Z"
     }
   ]
 }
