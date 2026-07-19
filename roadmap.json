@@ -1,7 +1,7 @@
 {
   "project": "VibeMap",
-  "seq": 28,
-  "updated_at": "2026-07-19T23:48:38Z",
+  "seq": 29,
+  "updated_at": "2026-07-19T23:55:48Z",
   "items": [
     {
       "id": "kanban-board",
@@ -165,10 +165,10 @@
     },
     {
       "id": "card-hover-controls",
-      "title": "Card hover controls (play / edit / expand)",
-      "status": "in_progress",
-      "notes": "Copy + Expand wired (expand mirrors clicking the card title). Edit still dummy.",
-      "updated_at": "2026-07-19T23:48:38Z",
+      "title": "Card hover controls (copy / expand)",
+      "status": "done",
+      "notes": "Copy + expand working; fixed scrollbar overlapping the controls on scrolling lanes (reserved gutter + classic scrollbar). Inline edit split out to #28.",
+      "updated_at": "2026-07-19T23:55:48Z",
       "ref": 21
     },
     {
@@ -218,6 +218,14 @@
       "status": "backlog",
       "notes": "Surface the recommended build sequences from #26 on the board (ordering, dependency hints).",
       "updated_at": "2026-07-19T23:44:45Z"
+    },
+    {
+      "id": "inline-edit-cards",
+      "ref": 28,
+      "title": "Inline edit cards (pencil)",
+      "status": "backlog",
+      "notes": "Edit a card's title/notes in place via the pencil button; writes back to roadmap.json (needs board write access — shared with #25 and move-on-click).",
+      "updated_at": "2026-07-19T23:55:48Z"
     }
   ]
 }

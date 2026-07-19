@@ -90,11 +90,17 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+    scrollbar-gutter: stable;   /* reserve gutter so the scrollbar never overlaps cards/controls */
     display: flex;
     flex-direction: column;
     gap: 4px;
     padding-right: 2px;
   }
+  /* styled = classic (space-taking) scrollbar in the reserved gutter, not an overlay */
+  .col-body::-webkit-scrollbar { width: 8px; }
+  .col-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  .col-body::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+  .col-body::-webkit-scrollbar-track { background: transparent; }
   /* Drag handles on the borders between lanes (vertical when side-by-side, horizontal when stacked) */
   .resizer {
     flex: none;
