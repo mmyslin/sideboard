@@ -372,20 +372,26 @@ async function poll() {
     setStatus("err");
   }
 }
-// Click a card (with a description) to toggle its notes; state survives re-renders.
-document.getElementById("board").addEventListener("click", (e) => {
-  const actionBtn = e.target.closest(".card-actions button");
-  if (actionBtn) {
-    e.stopPropagation();
-    if (actionBtn.dataset.action === "copy") sendCardToClaude(actionBtn.closest(".card"));
-    // edit / expand still to come
-    return;
-  }
-  const card = e.target.closest(".card.has-notes");
+// Toggle a card's description open/closed; state survives re-renders.
+function toggleExpand(card) {
   if (!card) return;
   const id = card.dataset.id;
   if (expanded.has(id)) expanded.delete(id); else expanded.add(id);
   card.classList.toggle("open");
+}
+
+// Click a card (or its expand button) to toggle its description.
+document.getElementById("board").addEventListener("click", (e) => {
+  const actionBtn = e.target.closest(".card-actions button");
+  if (actionBtn) {
+    e.stopPropagation();
+    const card = actionBtn.closest(".card");
+    if (actionBtn.dataset.action === "copy") sendCardToClaude(card);
+    else if (actionBtn.dataset.action === "expand") toggleExpand(card);
+    // edit still to come
+    return;
+  }
+  toggleExpand(e.target.closest(".card.has-notes"));
 });
 
 // Stack lanes vertically when the board is too narrow for readable side-by-side columns.
