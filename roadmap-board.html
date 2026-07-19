@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Roadmap</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --panel-2: #f0f1f4;
+    --text: #1b1f24;
+    --muted: #6a7280;
+    --border: #e2e5ea;
+    --shadow: 0 1px 2px rgba(0,0,0,.06), 0 1px 3px rgba(0,0,0,.04);
+    --accent: #4c6ef5;
+    --c-backlog: #94a3b8;
+    --c-next: #d97706;
+    --c-progress: #2563eb;
+    --c-done: #16a34a;
+    --pulse: rgba(76,110,245,.55);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --panel: #1c1f25;
+      --panel-2: #23272f;
+      --text: #e6e8eb;
+      --muted: #98a1b0;
+      --border: #2b2f38;
+      --shadow: 0 1px 2px rgba(0,0,0,.4);
+      --accent: #748ffc;
+      --pulse: rgba(116,143,252,.5);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  header h1 { font-size: 15px; margin: 0; font-weight: 650; }
+  header .meta { color: var(--muted); font-size: 11px; margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c-done); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-done) 22%, transparent); }
+  .dot.stale { background: var(--c-next); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-next) 22%, transparent); }
+  .dot.err { background: #dc2626; box-shadow: 0 0 0 3px rgba(220,38,38,.22); }
+  .board {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(180px, 1fr));
+    gap: 12px;
+    padding: 14px 16px;
+    overflow: auto;
+  }
+  @media (max-width: 760px) { .board { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 440px) { .board { grid-template-columns: 1fr; } }
+  .col {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 80px;
+  }
+  .col-head {
+    display: flex; align-items: center; gap: 7px;
+    font-weight: 600; font-size: 12px;
+    padding: 2px 2px 6px;
+    position: sticky; top: 0;
+  }
+  .col-head .bar { width: 8px; height: 8px; border-radius: 3px; }
+  .col-head .count { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 9px 10px;
+    box-shadow: var(--shadow);
+    animation: fadein .25s ease;
+  }
+  .card.recent { box-shadow: 0 0 0 2px var(--pulse), var(--shadow); }
+  .card .title { font-weight: 550; }
+  .card .notes { color: var(--muted); margin-top: 4px; font-size: 12px; white-space: pre-wrap; }
+  .card .when { color: var(--muted); margin-top: 6px; font-size: 10.5px; }
+  .empty { color: var(--muted); font-size: 11.5px; font-style: italic; padding: 4px 2px; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+</style>
+</head>
+<body>
+  <header>
+    <h1 id="project">Roadmap</h1>
+    <div class="meta">
+      <span id="status">connecting…</span>
+      <span class="dot" id="dot"></span>
+    </div>
+  </header>
+  <div class="board" id="board"></div>
+
+<script>
+const COLUMNS = [
+  { key: "backlog",     label: "Backlog",     color: "var(--c-backlog)"  },
+  { key: "next",        label: "Next Up",     color: "var(--c-next)"     },
+  { key: "in_progress", label: "In Progress", color: "var(--c-progress)" },
+  { key: "done",        label: "Done",        color: "var(--c-done)"     },
+];
+const RECENT_MS = 30000;   // highlight items touched in the last 30s
+const POLL_MS = 2000;
+
+let lastRaw = "";
+
+function rel(ts) {
+  if (!ts) return "";
+  const d = new Date(ts).getTime();
+  if (isNaN(d)) return "";
+  const s = Math.round((Date.now() - d) / 1000);
+  if (s < 5) return "just now";
+  if (s < 60) return s + "s ago";
+  const m = Math.round(s / 60);
+  if (m < 60) return m + "m ago";
+  const h = Math.round(m / 60);
+  if (h < 24) return h + "h ago";
+  return Math.round(h / 24) + "d ago";
+}
+function esc(x) { return (x ?? "").toString().replace(/[&<>]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;" }[c])); }
+
+function render(data) {
+  document.getElementById("project").textContent = data.project || "Roadmap";
+  const board = document.getElementById("board");
+  const now = Date.now();
+  const items = Array.isArray(data.items) ? data.items : [];
+  board.innerHTML = "";
+  for (const col of COLUMNS) {
+    const inCol = items.filter(i => (i.status || "backlog") === col.key);
+    const el = document.createElement("div");
+    el.className = "col";
+    el.innerHTML = `<div class="col-head"><span class="bar" style="background:${col.color}"></span>${col.label}<span class="count">${inCol.length}</span></div>`;
+    if (inCol.length === 0) {
+      el.insertAdjacentHTML("beforeend", `<div class="empty">—</div>`);
+    }
+    for (const it of inCol) {
+      const recent = it.updated_at && (now - new Date(it.updated_at).getTime()) < RECENT_MS;
+      el.insertAdjacentHTML("beforeend", `
+        <div class="card${recent ? " recent" : ""}">
+          <div class="title">${esc(it.title)}</div>
+          ${it.notes ? `<div class="notes">${esc(it.notes)}</div>` : ""}
+          ${it.updated_at ? `<div class="when">updated ${rel(it.updated_at)}</div>` : ""}
+        </div>`);
+    }
+    board.appendChild(el);
+  }
+}
+
+function setStatus(state, data) {
+  const dot = document.getElementById("dot");
+  const status = document.getElementById("status");
+  dot.className = "dot" + (state === "err" ? " err" : state === "stale" ? " stale" : "");
+  if (state === "err") { status.textContent = "waiting for roadmap.json…"; return; }
+  const up = data && data.updated_at ? "updated " + rel(data.updated_at) : "live";
+  status.textContent = up;
+}
+
+async function poll() {
+  try {
+    const res = await fetch("roadmap.json?_=" + Date.now(), { cache: "no-store" });
+    if (!res.ok) throw new Error(res.status);
+    const raw = await res.text();
+    if (raw !== lastRaw) { lastRaw = raw; render(JSON.parse(raw)); }
+    const data = JSON.parse(raw);
+    const age = data.updated_at ? Date.now() - new Date(data.updated_at).getTime() : 0;
+    setStatus(age > 3600000 ? "stale" : "ok", data);
+  } catch (e) {
+    setStatus("err");
+  }
+}
+poll();
+setInterval(poll, POLL_MS);
+</script>
+</body>
+</html>
