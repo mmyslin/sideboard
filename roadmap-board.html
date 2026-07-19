@@ -124,6 +124,7 @@
   .col-head .bar { width: 7px; height: 7px; border-radius: 2px; flex: none; }
   .col-head .count { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
   .card {
+    position: relative;
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 5px;
@@ -135,12 +136,23 @@
   .card-head { display: flex; align-items: flex-start; gap: 5px; }
   .card.has-notes .card-head { cursor: pointer; }
   .card .title { font-weight: 400; font-size: 12.5px; flex: 1; min-width: 0; }
-  .caret {
-    flex: none; border: 0; background: none; padding: 0; margin-top: 1px;
-    color: var(--muted); font-size: 9px; line-height: 1.2; cursor: pointer;
-    transition: transform .15s ease;
+  /* hover controls (dummy for now) */
+  .card-actions {
+    position: absolute; top: 3px; right: 3px;
+    display: none; gap: 1px;
+    padding: 1px 2px; border-radius: 6px;
+    background: var(--panel);
   }
-  .card.open .caret { transform: rotate(90deg); }
+  .card:hover .card-actions { display: flex; }
+  .card-actions button {
+    display: flex; align-items: center; justify-content: center;
+    width: 19px; height: 19px; padding: 0;
+    border: 0; border-radius: 4px; background: none; cursor: pointer;
+    color: var(--muted);
+    transition: background .12s ease, color .12s ease;
+  }
+  .card-actions button:hover { background: var(--panel-2); color: var(--text); }
+  .card-actions svg { width: 12px; height: 12px; display: block; }
   .card .notes { display: none; color: var(--muted); margin-top: 3px; font-size: 10.5px; white-space: pre-wrap; }
   .card.open .notes { display: block; }
   .card .when { color: var(--muted); margin-top: 3px; font-size: 8.5px; text-transform: uppercase; letter-spacing: .04em; }
@@ -167,6 +179,13 @@ const COLUMNS = [
 ];
 const RECENT_MS = 30000;   // highlight items touched in the last 30s
 const POLL_MS = 2000;
+
+// Card hover-control icons (inline SVG, self-contained)
+const ICON = {
+  play:   '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>',
+  edit:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
+  expand: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>',
+};
 
 let lastRaw = "";
 const expanded = new Set();   // item ids whose description is expanded (persists across re-renders)
@@ -219,9 +238,13 @@ function render(data) {
       const cls = ["card", recent && "recent", hasNotes && "has-notes", isOpen && "open"].filter(Boolean).join(" ");
       body.insertAdjacentHTML("beforeend", `
         <div class="${cls}" data-id="${esc(id)}">
+          <div class="card-actions">
+            <button type="button" data-action="play" title="Send card text to Claude" aria-label="Send card text to Claude">${ICON.play}</button>
+            <button type="button" data-action="edit" title="Edit card" aria-label="Edit card">${ICON.edit}</button>
+            <button type="button" data-action="expand" title="Expand card" aria-label="Expand card">${ICON.expand}</button>
+          </div>
           <div class="card-head">
             <span class="title">${esc(it.title)}</span>
-            ${hasNotes ? `<button class="caret" type="button" aria-label="Toggle description">▸</button>` : ""}
           </div>
           ${hasNotes ? `<div class="notes">${esc(it.notes)}</div>` : ""}
           ${it.updated_at ? `<div class="when">updated ${rel(it.updated_at)}</div>` : ""}
@@ -255,6 +278,12 @@ async function poll() {
 }
 // Click a card (with a description) to toggle its notes; state survives re-renders.
 document.getElementById("board").addEventListener("click", (e) => {
+  const actionBtn = e.target.closest(".card-actions button");
+  if (actionBtn) {
+    e.stopPropagation();
+    // TODO: wire up play (send to Claude) / edit / expand — dummy no-op for now
+    return;
+  }
   const card = e.target.closest(".card.has-notes");
   if (!card) return;
   const id = card.dataset.id;

@@ -1,6 +1,6 @@
 {
   "project": "VibeMap",
-  "updated_at": "2026-07-19T21:58:40Z",
+  "updated_at": "2026-07-19T22:09:38Z",
   "items": [
     {
       "id": "kanban-board",
@@ -141,6 +141,13 @@
       "status": "done",
       "notes": "Switches to columns at >=740px, stacks below, reacting live to pane width via ResizeObserver (+ resize/interval fallbacks). Replaces the fixed media-query breakpoint.",
       "updated_at": "2026-07-19T21:58:40Z"
+    },
+    {
+      "id": "card-hover-controls",
+      "title": "Card hover controls (play / edit / expand)",
+      "status": "in_progress",
+      "notes": "Dummy hover buttons in place; wiring next — play=send card text to Claude prompt, edit=inline edit, expand=uncollapse to read full description.",
+      "updated_at": "2026-07-19T22:09:38Z"
     }
   ]
 }
