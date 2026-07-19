@@ -1,6 +1,6 @@
 {
   "project": "VibeMap",
-  "updated_at": "2026-07-19T21:52:56Z",
+  "updated_at": "2026-07-19T21:58:40Z",
   "items": [
     {
       "id": "kanban-board",
@@ -134,6 +134,13 @@
       "status": "done",
       "notes": "Drag the border between two lanes to reallocate space; vertical handles side-by-side, horizontal when stacked. Min-size clamp prevents collapse.",
       "updated_at": "2026-07-19T21:52:56Z"
+    },
+    {
+      "id": "auto-stack",
+      "title": "Auto-stack lanes on narrow panes",
+      "status": "done",
+      "notes": "Switches to columns at >=740px, stacks below, reacting live to pane width via ResizeObserver (+ resize/interval fallbacks). Replaces the fixed media-query breakpoint.",
+      "updated_at": "2026-07-19T21:58:40Z"
     }
   ]
 }

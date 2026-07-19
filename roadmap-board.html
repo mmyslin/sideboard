@@ -68,7 +68,7 @@
     overflow: hidden;
     min-height: 0;
   }
-  @media (max-width: 640px) { .board { flex-direction: column; } }
+  .board.stacked { flex-direction: column; }
   .col {
     flex: 1 1 0;
     min-width: 0;
@@ -116,12 +116,10 @@
     transition: background .12s ease;
   }
   .resizer:hover::before, .resizer.dragging::before { background: var(--accent); }
-  @media (max-width: 640px) {
-    .resizer { width: auto; height: 8px; cursor: row-resize; }
-    .resizer::before {
-      top: 50%; bottom: auto; left: 10px; right: 10px;
-      width: auto; height: 2px; transform: translateY(-50%);
-    }
+  .board.stacked .resizer { width: auto; height: 8px; cursor: row-resize; }
+  .board.stacked .resizer::before {
+    top: 50%; bottom: auto; left: 10px; right: 10px;
+    width: auto; height: 2px; transform: translateY(-50%);
   }
   .col-head .bar { width: 7px; height: 7px; border-radius: 2px; flex: none; }
   .col-head .count { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -264,6 +262,17 @@ document.getElementById("board").addEventListener("click", (e) => {
   card.classList.toggle("open");
 });
 
+// Stack lanes vertically when the board is too narrow for readable side-by-side columns.
+(function autoStack() {
+  const board = document.getElementById("board");
+  const STACK_BELOW = 740;   // ~175px per column across 4 columns + handles
+  const apply = () => board.classList.toggle("stacked", board.clientWidth < STACK_BELOW);
+  apply();
+  if (window.ResizeObserver) new ResizeObserver(apply).observe(board);
+  window.addEventListener("resize", apply);   // fallback for environments where RO doesn't fire
+  setInterval(apply, 1000);                   // final safety net for embedded panes
+})();
+
 // Drag a resizer to reallocate space between its two neighbouring lanes.
 (function enableResize() {
   const board = document.getElementById("board");
@@ -274,7 +283,7 @@ document.getElementById("board").addEventListener("click", (e) => {
     const prev = board.querySelector(`.col[data-key="${rez.dataset.prev}"]`);
     const next = board.querySelector(`.col[data-key="${rez.dataset.next}"]`);
     if (!prev || !next) return;
-    const stacked = window.matchMedia("(max-width: 640px)").matches;
+    const stacked = board.classList.contains("stacked");
     const gPrev = parseFloat(prev.style.flexGrow) || 1;
     const gNext = parseFloat(next.style.flexGrow) || 1;
     drag = {
