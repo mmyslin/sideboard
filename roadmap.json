@@ -1,6 +1,6 @@
 {
   "project": "VibeMap",
-  "updated_at": "2026-07-19T22:31:33Z",
+  "updated_at": "2026-07-19T22:49:05Z",
   "items": [
     {
       "id": "kanban-board",
@@ -146,8 +146,8 @@
       "id": "card-hover-controls",
       "title": "Card hover controls (play / edit / expand)",
       "status": "in_progress",
-      "notes": "Play wired: sends card text to Claude via host bridge if present, else copies to clipboard with a toast. Edit/expand still dummy.",
-      "updated_at": "2026-07-19T22:31:33Z"
+      "notes": "Play copies a templated, editable prompt (title + notes + 'start implementing') to the clipboard; paste into the prompt, edit, send. Edit/expand still dummy.",
+      "updated_at": "2026-07-19T22:49:05Z"
     }
   ]
 }

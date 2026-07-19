@@ -236,14 +236,17 @@ function sendCardToClaude(card) {
   if (!card) return;
   const title = (card.querySelector(".title")?.textContent || "").trim();
   const notes = (card.querySelector(".notes")?.textContent || "").trim();
-  const text = notes ? `${title}\n\n${notes}` : title;
-  if (!text) return;
+  if (!title) return;
+  // Templated, editable prompt — paste into the Claude prompt, tweak, then send.
+  let text = `Let's work on this VibeMap roadmap item: "${title}".`;
+  if (notes) text += `\n\nNotes: ${notes}`;
+  text += `\n\nMove it to In Progress and start implementing.`;
   const bridge = typeof window.sendPrompt === "function" ? window.sendPrompt
     : (window.claude && typeof window.claude.sendPrompt === "function") ? window.claude.sendPrompt.bind(window.claude)
     : null;
   if (bridge) { bridge(text); toast("Sent to Claude"); return; }
   if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(text).then(() => toast("Copied — paste into Claude")).catch(() => toast("Copy failed"));
+    navigator.clipboard.writeText(text).then(() => toast("Copied — ⌘V into the prompt to edit & send")).catch(() => toast("Copy failed"));
   } else {
     toast("Copy unavailable");
   }
