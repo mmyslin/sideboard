@@ -1,6 +1,6 @@
 {
   "project": "VibeMap",
-  "updated_at": "2026-07-19T23:02:15Z",
+  "updated_at": "2026-07-19T23:09:22Z",
   "items": [
     {
       "id": "kanban-board",
@@ -146,8 +146,8 @@
       "id": "card-hover-controls",
       "title": "Card hover controls (play / edit / expand)",
       "status": "in_progress",
-      "notes": "Play working (execCommand copy + async + pre-selected-text fallback), confirmed in the desktop pane. Edit/expand still dummy.",
-      "updated_at": "2026-07-19T23:02:15Z"
+      "notes": "Copy button (overlapping-squares icon) copies a start-implementing prompt; the 'move to In Progress' happens when you send it. Edit/expand still dummy.",
+      "updated_at": "2026-07-19T23:09:22Z"
     }
   ]
 }
