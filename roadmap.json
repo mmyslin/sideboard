@@ -1,7 +1,7 @@
 {
   "project": "VibeMap",
-  "seq": 26,
-  "updated_at": "2026-07-19T23:41:49Z",
+  "seq": 27,
+  "updated_at": "2026-07-19T23:43:11Z",
   "items": [
     {
       "id": "kanban-board",
@@ -202,6 +202,14 @@
       "status": "backlog",
       "notes": "A '+' affordance to create new backlog cards directly on the board. Needs board write access — same dependency as inline Edit / move-on-click.",
       "updated_at": "2026-07-19T23:41:49Z"
+    },
+    {
+      "id": "dependency-sequencing",
+      "ref": 26,
+      "title": "Analyze backlog dependencies, recommend sequences",
+      "status": "backlog",
+      "notes": "Analyze backlog items for technical dependencies and generate recommended sequences (build orders) of items.",
+      "updated_at": "2026-07-19T23:43:11Z"
     }
   ]
 }
