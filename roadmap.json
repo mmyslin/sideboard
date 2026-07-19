@@ -1,7 +1,7 @@
 {
   "project": "VibeMap",
   "seq": 25,
-  "updated_at": "2026-07-19T23:30:48Z",
+  "updated_at": "2026-07-19T23:38:36Z",
   "items": [
     {
       "id": "kanban-board",
@@ -54,9 +54,9 @@
     {
       "id": "make-public",
       "title": "Make the repo public",
-      "status": "next",
+      "status": "backlog",
       "notes": "gh repo edit --visibility public when ready.",
-      "updated_at": "2026-07-19T21:22:11Z",
+      "updated_at": "2026-07-19T23:31:43Z",
       "ref": 7
     },
     {
@@ -119,8 +119,8 @@
       "id": "external-integrations",
       "title": "External board/ticketing integrations",
       "status": "backlog",
-      "notes": "Sync with GitHub Issues, Linear, Jira, etc.",
-      "updated_at": "2026-07-19T21:25:51Z",
+      "notes": "Two-tier design (NOT a source-of-truth swap): keep roadmap.json as the default local, zero-infra planning surface; add an optional GitHub mode where a card is promoted to a real issue (its #N becomes the issue number) and a gh-driven sync mirrors status via labels and closes issues on Done. The static board can't auth to the GitHub API, so roadmap.json stays as the local view that GitHub syncs into. Also covers Linear/Jira later. Shelved for now.",
+      "updated_at": "2026-07-19T23:38:36Z",
       "ref": 15
     },
     {
