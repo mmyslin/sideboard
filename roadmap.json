@@ -1,6 +1,6 @@
 {
   "project": "VibeMap",
-  "updated_at": "2026-07-19T23:09:22Z",
+  "updated_at": "2026-07-19T23:15:39Z",
   "items": [
     {
       "id": "kanban-board",
@@ -148,6 +148,13 @@
       "status": "in_progress",
       "notes": "Copy button (overlapping-squares icon) copies a start-implementing prompt; the 'move to In Progress' happens when you send it. Edit/expand still dummy.",
       "updated_at": "2026-07-19T23:09:22Z"
+    },
+    {
+      "id": "project-specific-titles",
+      "title": "Project-specific roadmap titles",
+      "status": "backlog",
+      "notes": "Let the header show a per-project name via an optional 'title' field in roadmap.json, defaulting to 'Roadmap'.",
+      "updated_at": "2026-07-19T23:15:39Z"
     }
   ]
 }
