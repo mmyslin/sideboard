@@ -7,31 +7,32 @@
 <style>
   :root {
     color-scheme: light dark;
-    --bg: #f6f7f9;
+    /* Warm neutrals to match the Claude Code palette (clay accent, cream/charcoal grays) */
+    --bg: #faf9f5;
     --panel: #ffffff;
-    --panel-2: #f0f1f4;
-    --text: #1b1f24;
-    --muted: #6a7280;
-    --border: #e2e5ea;
-    --shadow: 0 1px 2px rgba(0,0,0,.06), 0 1px 3px rgba(0,0,0,.04);
-    --accent: #4c6ef5;
-    --c-backlog: #94a3b8;
+    --panel-2: #f0eee6;
+    --text: #1f1e1d;
+    --muted: #73716c;
+    --border: #e6e2d8;
+    --shadow: 0 1px 2px rgba(60,50,30,.06), 0 1px 3px rgba(60,50,30,.05);
+    --accent: #c96442;
+    --c-backlog: #9c968b;
     --c-next: #d97706;
-    --c-progress: #2563eb;
-    --c-done: #16a34a;
-    --pulse: rgba(76,110,245,.55);
+    --c-progress: #2f6fe0;
+    --c-done: #1a9e4b;
+    --pulse: rgba(201,100,66,.5);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #14161a;
-      --panel: #1c1f25;
-      --panel-2: #23272f;
-      --text: #e6e8eb;
-      --muted: #98a1b0;
-      --border: #2b2f38;
+      --bg: #1f1e1d;
+      --panel: #262624;
+      --panel-2: #2d2b28;
+      --text: #f0eee6;
+      --muted: #9b968d;
+      --border: #38352f;
       --shadow: 0 1px 2px rgba(0,0,0,.4);
-      --accent: #748ffc;
-      --pulse: rgba(116,143,252,.5);
+      --accent: #d97757;
+      --pulse: rgba(217,119,87,.5);
     }
   }
   * { box-sizing: border-box; }
@@ -98,8 +99,17 @@
     animation: fadein .2s ease;
   }
   .card.recent { box-shadow: 0 0 0 1.5px var(--pulse), var(--shadow); }
-  .card .title { font-weight: 600; font-size: 11.5px; }
-  .card .notes { color: var(--muted); margin-top: 2px; font-size: 10.5px; white-space: pre-wrap; }
+  .card-head { display: flex; align-items: flex-start; gap: 5px; }
+  .card.has-notes .card-head { cursor: pointer; }
+  .card .title { font-weight: 400; font-size: 11.5px; flex: 1; min-width: 0; }
+  .caret {
+    flex: none; border: 0; background: none; padding: 0; margin-top: 1px;
+    color: var(--muted); font-size: 9px; line-height: 1.2; cursor: pointer;
+    transition: transform .15s ease;
+  }
+  .card.open .caret { transform: rotate(90deg); }
+  .card .notes { display: none; color: var(--muted); margin-top: 3px; font-size: 10.5px; white-space: pre-wrap; }
+  .card.open .notes { display: block; }
   .card .when { color: var(--muted); margin-top: 3px; font-size: 8.5px; text-transform: uppercase; letter-spacing: .04em; }
   .empty { color: var(--muted); font-size: 10px; font-style: italic; padding: 1px 3px; }
   @keyframes fadein { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
@@ -126,6 +136,7 @@ const RECENT_MS = 30000;   // highlight items touched in the last 30s
 const POLL_MS = 2000;
 
 let lastRaw = "";
+const expanded = new Set();   // item ids whose description is expanded (persists across re-renders)
 
 function rel(ts) {
   if (!ts) return "";
@@ -158,10 +169,17 @@ function render(data) {
     }
     for (const it of inCol) {
       const recent = it.updated_at && (now - new Date(it.updated_at).getTime()) < RECENT_MS;
+      const hasNotes = !!it.notes;
+      const id = it.id != null ? String(it.id) : "";
+      const isOpen = hasNotes && expanded.has(id);
+      const cls = ["card", recent && "recent", hasNotes && "has-notes", isOpen && "open"].filter(Boolean).join(" ");
       el.insertAdjacentHTML("beforeend", `
-        <div class="card${recent ? " recent" : ""}">
-          <div class="title">${esc(it.title)}</div>
-          ${it.notes ? `<div class="notes">${esc(it.notes)}</div>` : ""}
+        <div class="${cls}" data-id="${esc(id)}">
+          <div class="card-head">
+            <span class="title">${esc(it.title)}</span>
+            ${hasNotes ? `<button class="caret" type="button" aria-label="Toggle description">▸</button>` : ""}
+          </div>
+          ${hasNotes ? `<div class="notes">${esc(it.notes)}</div>` : ""}
           ${it.updated_at ? `<div class="when">updated ${rel(it.updated_at)}</div>` : ""}
         </div>`);
     }
@@ -191,6 +209,15 @@ async function poll() {
     setStatus("err");
   }
 }
+// Click a card (with a description) to toggle its notes; state survives re-renders.
+document.getElementById("board").addEventListener("click", (e) => {
+  const card = e.target.closest(".card.has-notes");
+  if (!card) return;
+  const id = card.dataset.id;
+  if (expanded.has(id)) expanded.delete(id); else expanded.add(id);
+  card.classList.toggle("open");
+});
+
 poll();
 setInterval(poll, POLL_MS);
 </script>

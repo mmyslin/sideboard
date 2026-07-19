@@ -1,6 +1,6 @@
 {
   "project": "VibeMap",
-  "updated_at": "2026-07-19T21:33:09Z",
+  "updated_at": "2026-07-19T21:43:34Z",
   "items": [
     {
       "id": "kanban-board",
@@ -120,6 +120,13 @@
       "status": "backlog",
       "notes": "When stacked vertically (tall/narrow window), each swimlane scrolls on its own.",
       "updated_at": "2026-07-19T21:28:08Z"
+    },
+    {
+      "id": "palette-card-polish",
+      "title": "Visual polish: Claude palette + cards",
+      "status": "done",
+      "notes": "De-bolded titles; click-to-expand descriptions (collapsed by default); warm palette matching Claude Code.",
+      "updated_at": "2026-07-19T21:43:34Z"
     }
   ]
 }
