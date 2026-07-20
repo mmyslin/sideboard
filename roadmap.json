@@ -1,7 +1,7 @@
 {
   "project": "VibeMap",
   "seq": 30,
-  "updated_at": "2026-07-20T03:39:29Z",
+  "updated_at": "2026-07-20T04:23:39Z",
   "items": [
     {
       "id": "kanban-board",
@@ -117,10 +117,10 @@
     },
     {
       "id": "external-integrations",
-      "title": "External board/ticketing integrations",
+      "title": "GitHub Issues as source of truth",
       "status": "backlog",
-      "notes": "Two-tier design (NOT a source-of-truth swap): keep roadmap.json as the default local, zero-infra planning surface; add an optional GitHub mode where a card is promoted to a real issue (its #N becomes the issue number) and a gh-driven sync mirrors status via labels and closes issues on Done. The static board can't auth to the GitHub API, so roadmap.json stays as the local view that GitHub syncs into. Also covers Linear/Jira later. Shelved for now.",
-      "updated_at": "2026-07-19T23:38:36Z",
+      "notes": "Design DECIDED — see docs/github-sync-design.md. GitHub Issues are the single source of truth; a local gh-backed companion syncs them into roadmap.json (the board's read-file) and takes writes. Swimlane split + order live in a sidecar (.vibemap/meta.json); done=closed; refs=issue numbers. REST-only (no Projects/GraphQL). Repo required; not pluggable yet. Open problem: reconciling GitHub-side edits (rules in the doc).",
+      "updated_at": "2026-07-20T04:23:39Z",
       "ref": 15
     },
     {
