@@ -90,17 +90,12 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
-    scrollbar-gutter: stable;   /* reserve gutter so the scrollbar never overlaps cards/controls */
     display: flex;
     flex-direction: column;
     gap: 4px;
-    padding-right: 2px;
+    /* right buffer so the scrollbar (incl. a macOS overlay thumb) floats clear of the cards/controls */
+    padding-right: 12px;
   }
-  /* styled = classic (space-taking) scrollbar in the reserved gutter, not an overlay */
-  .col-body::-webkit-scrollbar { width: 8px; }
-  .col-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-  .col-body::-webkit-scrollbar-thumb:hover { background: var(--muted); }
-  .col-body::-webkit-scrollbar-track { background: transparent; }
   /* Drag handles on the borders between lanes (vertical when side-by-side, horizontal when stacked) */
   .resizer {
     flex: none;
@@ -141,18 +136,12 @@
   .card .title { font-weight: 400; font-size: 12.5px; flex: 1; min-width: 0; }
   /* hover controls (dummy for now) */
   .card-actions {
-    position: absolute; top: 3px; right: 8px;   /* inset from the edge so controls clear any scrollbar */
-    display: flex; align-items: center; gap: 1px;
+    position: absolute; top: 3px; right: 5px;
+    display: none; align-items: center; gap: 1px;
     padding: 1px 2px; border-radius: 6px;
     background: var(--panel);
-    opacity: 0; visibility: hidden; pointer-events: none;
-    transition: opacity .12s ease, visibility .12s ease;
-    transition-delay: .3s;   /* linger briefly after the mouse leaves, so an overshoot doesn't lose them */
   }
-  .card:hover .card-actions {
-    opacity: 1; visibility: visible; pointer-events: auto;
-    transition-delay: 0s;
-  }
+  .card:hover .card-actions { display: flex; }
   .card-actions button {
     display: flex; align-items: center; justify-content: center;
     width: 22px; height: 22px; padding: 0;

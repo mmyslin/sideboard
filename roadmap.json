@@ -1,7 +1,7 @@
 {
   "project": "VibeMap",
   "seq": 29,
-  "updated_at": "2026-07-20T00:07:17Z",
+  "updated_at": "2026-07-20T00:15:01Z",
   "items": [
     {
       "id": "kanban-board",
@@ -167,8 +167,8 @@
       "id": "card-hover-controls",
       "title": "Card hover controls (copy / expand)",
       "status": "in_progress",
-      "notes": "Reopened: controls' hover lost near the scrollbar (worst on the top items of a scrolling lane, likely overlay-scrollbar thumb). Added reserved gutter + classic scrollbar + inset controls (right 8px) + 0.3s linger so overshoot doesn't drop them. Pending confirmation on the desktop app.",
-      "updated_at": "2026-07-20T00:07:17Z",
+      "notes": "Hover-near-scrollbar bug: root cause was a macOS overlay scrollbar thumb floating over the top cards' right edge (shading + stealing hover). Fixed with a 12px right buffer on the scroll area so the thumb stays clear; reverted the laggy hover linger. Reproduced overlay env in testing. Pending confirmation.",
+      "updated_at": "2026-07-20T00:15:01Z",
       "ref": 21
     },
     {
