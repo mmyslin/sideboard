@@ -16,10 +16,9 @@
     --border: #e6e2d8;
     --shadow: 0 1px 2px rgba(60,50,30,.06), 0 1px 3px rgba(60,50,30,.05);
     --accent: #c96442;
-    --c-backlog: #9c968b;
-    --c-next: #d97706;
-    --c-progress: #2f6fe0;
-    --c-done: #1a9e4b;
+    --c-backlog: #2f6fe0;   /* blue */
+    --c-progress: #d97706;  /* orange */
+    --c-done: #1a9e4b;      /* green */
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -204,7 +203,6 @@
 <script>
 const COLUMNS = [
   { key: "backlog",     label: "Backlog",     color: "var(--c-backlog)"  },
-  { key: "next",        label: "Next Up",     color: "var(--c-next)"     },
   { key: "in_progress", label: "In Progress", color: "var(--c-progress)" },
   { key: "done",        label: "Done",        color: "var(--c-done)"     },
 ];
