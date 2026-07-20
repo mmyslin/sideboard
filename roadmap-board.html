@@ -141,12 +141,18 @@
   .card .title { font-weight: 400; font-size: 12.5px; flex: 1; min-width: 0; }
   /* hover controls (dummy for now) */
   .card-actions {
-    position: absolute; top: 3px; right: 3px;
-    display: none; align-items: center; gap: 1px;
+    position: absolute; top: 3px; right: 8px;   /* inset from the edge so controls clear any scrollbar */
+    display: flex; align-items: center; gap: 1px;
     padding: 1px 2px; border-radius: 6px;
     background: var(--panel);
+    opacity: 0; visibility: hidden; pointer-events: none;
+    transition: opacity .12s ease, visibility .12s ease;
+    transition-delay: .3s;   /* linger briefly after the mouse leaves, so an overshoot doesn't lose them */
   }
-  .card:hover .card-actions { display: flex; }
+  .card:hover .card-actions {
+    opacity: 1; visibility: visible; pointer-events: auto;
+    transition-delay: 0s;
+  }
   .card-actions button {
     display: flex; align-items: center; justify-content: center;
     width: 22px; height: 22px; padding: 0;

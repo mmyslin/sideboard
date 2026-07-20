@@ -1,7 +1,7 @@
 {
   "project": "VibeMap",
   "seq": 29,
-  "updated_at": "2026-07-19T23:55:48Z",
+  "updated_at": "2026-07-20T00:07:17Z",
   "items": [
     {
       "id": "kanban-board",
@@ -166,9 +166,9 @@
     {
       "id": "card-hover-controls",
       "title": "Card hover controls (copy / expand)",
-      "status": "done",
-      "notes": "Copy + expand working; fixed scrollbar overlapping the controls on scrolling lanes (reserved gutter + classic scrollbar). Inline edit split out to #28.",
-      "updated_at": "2026-07-19T23:55:48Z",
+      "status": "in_progress",
+      "notes": "Reopened: controls' hover lost near the scrollbar (worst on the top items of a scrolling lane, likely overlay-scrollbar thumb). Added reserved gutter + classic scrollbar + inset controls (right 8px) + 0.3s linger so overshoot doesn't drop them. Pending confirmation on the desktop app.",
+      "updated_at": "2026-07-20T00:07:17Z",
       "ref": 21
     },
     {
