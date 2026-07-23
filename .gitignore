@@ -1,2 +1,4 @@
 .DS_Store
 roadmap.json
+__pycache__/
+*.pyc

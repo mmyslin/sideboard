@@ -129,6 +129,7 @@
     box-shadow: var(--shadow);
     animation: fadein .2s ease;
   }
+  .card.dragging { opacity: .4; }
   .card-head { display: flex; align-items: flex-start; gap: 5px; }
   .card.has-notes .card-head { cursor: pointer; }
   .card .title { font-weight: 400; font-size: 12.5px; flex: 1; min-width: 0; }
@@ -336,7 +337,7 @@ function render(data) {
       const isOpen = hasNotes && expanded.has(id);
       const cls = ["card", hasNotes && "has-notes", isOpen && "open"].filter(Boolean).join(" ");
       body.insertAdjacentHTML("beforeend", `
-        <div class="${cls}" data-id="${esc(id)}">
+        <div class="${cls}" data-id="${esc(id)}" data-ref="${esc(it.ref)}" draggable="true">
           <div class="card-actions">
             <button type="button" data-action="copy" title="Copy a prompt to send to Claude" aria-label="Copy a prompt to send to Claude">${ICON.copy}</button>
             <button type="button" data-action="edit" title="Edit card" aria-label="Edit card">${ICON.edit}</button>
@@ -452,6 +453,55 @@ document.getElementById("board").addEventListener("click", (e) => {
   };
   board.addEventListener("pointerup", end);
   board.addEventListener("pointercancel", end);
+})();
+
+// Drag & drop: move between columns / reorder -> POST /api/drop (github mode; needs the companion).
+(function enableDnD() {
+  const board = document.getElementById("board");
+  let dragEl = null;
+
+  const dragAfter = (bodyEl, y) => {
+    for (const c of bodyEl.querySelectorAll(".card:not(.dragging)")) {
+      const r = c.getBoundingClientRect();
+      if (y < r.top + r.height / 2) return c;
+    }
+    return null;
+  };
+
+  board.addEventListener("dragstart", (e) => {
+    const card = e.target.closest(".card");
+    if (!card || e.target.closest(".card-actions")) { e.preventDefault(); return; }
+    dragEl = card;
+    card.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+    try { e.dataTransfer.setData("text/plain", card.dataset.ref); } catch (_) {}
+  });
+
+  board.addEventListener("dragover", (e) => {
+    if (!dragEl) return;
+    const bodyEl = e.target.closest(".col-body");
+    if (!bodyEl) return;
+    e.preventDefault();
+    const after = dragAfter(bodyEl, e.clientY);
+    if (after == null) bodyEl.appendChild(dragEl);
+    else bodyEl.insertBefore(dragEl, after);
+  });
+
+  board.addEventListener("dragend", () => {
+    if (!dragEl) return;
+    const card = dragEl; dragEl = null;
+    card.classList.remove("dragging");
+    const status = card.closest(".col") && card.closest(".col").dataset.key;
+    if (!status) return;
+    const number = Number(card.dataset.ref);
+    const order = [...board.querySelectorAll(".card")].map(c => Number(c.dataset.ref));
+    fetch("/api/drop", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ number, status, order }),
+    }).then(r => { if (!r.ok) throw new Error(r.status); })
+      .catch(() => toast("Move not saved — is the companion running?"));
+  });
 })();
 
 poll();
