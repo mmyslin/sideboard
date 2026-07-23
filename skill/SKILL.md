@@ -19,14 +19,14 @@ auto-updating roadmap.
   "updated_at": "2026-01-01T00:00:00Z",
   "items": [
     { "id": "kebab-id", "ref": 12, "title": "Short feature title",
-      "status": "backlog|next|in_progress|done",
+      "status": "backlog|in_progress|done",
       "notes": "optional one-liner",
       "updated_at": "2026-01-01T00:00:00Z" }
   ]
 }
 ```
 
-- **Statuses / columns:** `backlog` → Backlog, `next` → Next Up, `in_progress` → In Progress, `done` → Done.
+- **Statuses / columns:** `backlog` → Backlog, `in_progress` → In Progress, `done` → Done. (These are the only statuses the board renders; any other value would not show.)
 - `id` is a stable kebab-case slug; never reuse or renumber ids.
 - `ref` is the card's human-facing number (shown as `#N`). When adding an item, set its `ref` to the top-level `seq`, then increment `seq`. **Never reuse a ref**, even after an item is deleted — always hand out `seq` and bump it.
 - Every write updates the changed item's `updated_at` AND the top-level `updated_at`, both ISO-8601 UTC.
@@ -34,7 +34,7 @@ auto-updating roadmap.
 ## When to update (do this proactively, without being asked)
 
 During normal work, keep the board honest:
-- The user decides to build something next → add an item (`backlog` or `next`).
+- The user decides to build something → add an item to `backlog`.
 - You start working on an item → set it `in_progress`.
 - Work lands / user confirms done → set it `done`.
 - Scope/notes change → edit `notes`.
@@ -46,7 +46,7 @@ Mention roadmap changes in one short line; don't derail the main task.
 ## Referring to cards by number
 
 The user may name a card by its number — `#10`, "do #10", "what's #21?",
-"move #7 to next", "close out #3". Resolve it to the item in `roadmap.json`
+"move #7 to in progress", "close out #3". Resolve it to the item in `roadmap.json`
 whose `ref` equals that number, then act on that item (implement it, change its
 status, edit its notes, or just answer about it). `#N` means `ref` — never the
 array position or the kebab `id`. If no item has that `ref`, say so plainly

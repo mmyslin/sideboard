@@ -1,7 +1,7 @@
 {
   "project": "VibeMap",
-  "seq": 30,
-  "updated_at": "2026-07-20T04:23:39Z",
+  "seq": 31,
+  "updated_at": "2026-07-23T03:13:07Z",
   "items": [
     {
       "id": "kanban-board",
@@ -234,6 +234,14 @@
       "status": "backlog",
       "notes": "In a scrolling lane, the top ~2 cards' rightmost control (expand) loses hover — the toolbar vanishes when hovered; copy/edit (further left) are fine. Only scrolling lanes, only the top cards, which also look slightly lighter-shaded. NOT the native scrollbar (hiding it via scrollbar-width:none didn't help; no scrollbar is ever visible in the app). Behaves like a wide (~40px) invisible dead-zone at the top-right of scrolling content, likely app/webview-specific. Insetting the whole toolbar ~40px clears it but looks bulky. Workaround: click the card title to expand.",
       "updated_at": "2026-07-20T03:39:29Z"
+    },
+    {
+      "id": "fix-orphaned-next-status",
+      "ref": 30,
+      "title": "Fix: skill docs listed a status the board doesn't render",
+      "status": "done",
+      "notes": "Skill documented a 'next'/Next Up status but the board renders backlog/in_progress/done only, so 'next' cards silently vanished. Dropped 'next' from the skill docs AND made the board fold any unrecognized status into Backlog so a card can never silently disappear.",
+      "updated_at": "2026-07-23T03:13:07Z"
     }
   ]
 }

@@ -307,8 +307,13 @@ function render(data) {
   const board = document.getElementById("board");
   const items = Array.isArray(data.items) ? data.items : [];
   board.innerHTML = "";
+  const KNOWN = new Set(COLUMNS.map(c => c.key));
   COLUMNS.forEach((col, idx) => {
-    const inCol = items.filter(i => (i.status || "backlog") === col.key);
+    const inCol = items.filter(i => {
+      const s = i.status || "backlog";
+      // fold any unrecognized status into Backlog so a card never silently disappears
+      return s === col.key || (col.key === "backlog" && !KNOWN.has(s));
+    });
     if (idx > 0) {
       const rez = document.createElement("div");
       rez.className = "resizer";
