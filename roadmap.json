@@ -1,7 +1,7 @@
 {
   "project": "VibeMap",
   "seq": 31,
-  "updated_at": "2026-07-23T03:13:07Z",
+  "updated_at": "2026-07-23T03:20:46Z",
   "items": [
     {
       "id": "kanban-board",
@@ -118,9 +118,9 @@
     {
       "id": "external-integrations",
       "title": "GitHub Issues as source of truth",
-      "status": "backlog",
+      "status": "in_progress",
       "notes": "Design DECIDED — see docs/github-sync-design.md. GitHub Issues are the single source of truth; a local gh-backed companion syncs them into roadmap.json (the board's read-file) and takes writes. Swimlane split + order live in a sidecar (.vibemap/meta.json); done=closed; refs=issue numbers. REST-only (no Projects/GraphQL). Repo required; not pluggable yet. Open problem: reconciling GitHub-side edits (rules in the doc).",
-      "updated_at": "2026-07-20T04:23:39Z",
+      "updated_at": "2026-07-23T03:20:46Z",
       "ref": 15
     },
     {
