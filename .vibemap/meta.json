@@ -3,7 +3,6 @@
     "7": "backlog",
     "8": "backlog",
     "9": "backlog",
-    "10": "backlog",
     "11": "backlog",
     "12": "backlog",
     "14": "backlog",
@@ -13,7 +12,8 @@
     "26": "backlog",
     "27": "backlog",
     "28": "backlog",
-    "29": "backlog"
+    "29": "backlog",
+    "31": "backlog"
   },
   "order": [
     "8",
@@ -45,6 +45,7 @@
     "21",
     "23",
     "24",
-    "30"
+    "30",
+    "31"
   ]
 }

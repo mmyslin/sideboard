@@ -39,6 +39,17 @@ def gh_close(n):  subprocess.check_call(["gh", "issue", "close", str(n)] + (["--
 def gh_reopen(n): subprocess.check_call(["gh", "issue", "reopen", str(n)] + (["--repo", REPO] if REPO else []), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+def gh_create(title, body):
+    cmd = ["gh", "issue", "create", "--title", title, "--body", body or ""] + (["--repo", REPO] if REPO else [])
+    url = subprocess.run(cmd, check=True, text=True, capture_output=True).stdout.strip().splitlines()[-1]
+    return int(url.rsplit("/", 1)[-1])
+
+
+def gh_edit(n, title, body):
+    subprocess.run(["gh", "issue", "edit", str(n), "--title", title, "--body", body or ""]
+                   + (["--repo", REPO] if REPO else []), check=True, text=True, capture_output=True)
+
+
 # ---- sidecar + merge --------------------------------------------------------
 def load_meta():
     try:
@@ -131,20 +142,43 @@ def apply_drop(number, status, order):
     return sync() if did_gh else regenerate()    # re-fetch only when GitHub state changed
 
 
+def create_issue(title, body):
+    n = gh_create(title, body)   # new open issue -> reconcile lands it in Backlog
+    sync()
+    return n
+
+
+def edit_issue(n, title, body):
+    gh_edit(n, title, body)
+    sync()
+
+
 # ---- HTTP -------------------------------------------------------------------
 class Handler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *a): pass
 
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-store")   # always serve the latest board on reload
+        super().end_headers()
+
     def do_POST(self):
-        if self.path.split("?")[0] != "/api/drop":
-            self.send_error(404); return
+        path = self.path.split("?")[0]
         try:
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or "{}")
-            apply_drop(body["number"], body["status"], body.get("order"))
+            if path == "/api/drop":
+                apply_drop(body["number"], body["status"], body.get("order"))
+                resp = {"ok": True}
+            elif path == "/api/create":
+                resp = {"ok": True, "number": create_issue(body["title"], body.get("notes", ""))}
+            elif path == "/api/edit":
+                edit_issue(body["number"], body["title"], body.get("notes", ""))
+                resp = {"ok": True}
+            else:
+                self.send_error(404); return
             self.send_response(200); self.send_header("Content-Type", "application/json"); self.end_headers()
-            self.wfile.write(b'{"ok":true}')
+            self.wfile.write(json.dumps(resp).encode())
         except Exception as e:
-            print(f"[vibemap] drop error: {e}", file=sys.stderr, flush=True)
+            print(f"[vibemap] POST {path} error: {e}", file=sys.stderr, flush=True)
             self.send_response(500); self.end_headers(); self.wfile.write(str(e).encode())
 
 

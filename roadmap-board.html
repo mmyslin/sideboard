@@ -189,6 +189,36 @@
     border: 1px solid var(--border); border-radius: 5px;
     background: var(--panel-2); color: var(--text); cursor: pointer;
   }
+  .col-add {
+    margin-left: 6px; width: 15px; height: 15px; padding: 0; flex: none;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--border); border-radius: 4px;
+    background: none; color: var(--muted); cursor: pointer; font-size: 13px; line-height: 1;
+  }
+  .col-add:hover { color: var(--text); border-color: var(--muted); }
+  #card-editor {
+    position: fixed; inset: 0; z-index: 20;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,.45);
+  }
+  #card-editor .ce-box {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px; width: min(92%, 360px);
+    display: flex; flex-direction: column; gap: 8px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.4);
+  }
+  #card-editor input, #card-editor textarea {
+    width: 100%; box-sizing: border-box;
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 12px;
+  }
+  #card-editor textarea { height: 84px; resize: vertical; }
+  #card-editor .ce-row { display: flex; justify-content: flex-end; gap: 6px; }
+  #card-editor .ce-row button {
+    font-size: 11.5px; padding: 4px 12px; border-radius: 5px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+  }
+  #card-editor .ce-save { background: var(--accent); border-color: var(--accent); color: #fff; }
 </style>
 </head>
 <body>
@@ -282,6 +312,46 @@ function showCopyFallback(text) {
   ta.focus(); ta.select();
 }
 
+// Create / edit a card -> POST /api/create or /api/edit (github mode).
+function openEditor(mode, data) {
+  data = data || {};
+  document.getElementById("card-editor")?.remove();
+  const m = document.createElement("div");
+  m.id = "card-editor";
+  m.innerHTML = `<div class="ce-box">
+      <input class="ce-title" type="text" placeholder="Title" />
+      <textarea class="ce-notes" placeholder="Notes (optional)"></textarea>
+      <div class="ce-row">
+        <button type="button" class="ce-cancel">Cancel</button>
+        <button type="button" class="ce-save">${mode === "create" ? "Add" : "Save"}</button>
+      </div>
+    </div>`;
+  const titleEl = m.querySelector(".ce-title");
+  const notesEl = m.querySelector(".ce-notes");
+  titleEl.value = data.title || "";
+  notesEl.value = data.notes || "";
+  const close = () => m.remove();
+  m.addEventListener("mousedown", (e) => { if (e.target === m) close(); });
+  m.querySelector(".ce-cancel").addEventListener("click", close);
+  const submit = () => {
+    const title = titleEl.value.trim();
+    if (!title) { titleEl.focus(); return; }
+    const url = mode === "create" ? "/api/create" : "/api/edit";
+    const payload = mode === "create"
+      ? { title, notes: notesEl.value }
+      : { number: data.number, title, notes: notesEl.value };
+    close();
+    toast(mode === "create" ? "Adding…" : "Saving…");
+    fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+      .then(r => { if (!r.ok) throw new Error(r.status); })
+      .catch(() => toast("Not saved — is the companion running?"));
+  };
+  m.querySelector(".ce-save").addEventListener("click", submit);
+  titleEl.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
+  document.body.appendChild(m);
+  titleEl.focus();
+}
+
 // Copy that works inside embedded panes. The async Clipboard API rejects with
 // "Document is not focused" there, so try the in-gesture execCommand path first
 // (copies the current selection during a real click) and fall back to the async API.
@@ -326,7 +396,8 @@ function render(data) {
     el.className = "col";
     el.dataset.key = col.key;
     el.style.flexGrow = grow[col.key] ?? 1;
-    el.innerHTML = `<div class="col-head"><span class="bar" style="background:${col.color}"></span>${col.label}<span class="count">${inCol.length}</span></div><div class="col-body"></div>`;
+    const add = col.key === "backlog" ? `<button class="col-add" type="button" title="Add item" aria-label="Add item">+</button>` : "";
+    el.innerHTML = `<div class="col-head"><span class="bar" style="background:${col.color}"></span>${col.label}<span class="count">${inCol.length}</span>${add}</div><div class="col-body"></div>`;
     const body = el.querySelector(".col-body");
     if (inCol.length === 0) {
       body.insertAdjacentHTML("beforeend", `<div class="empty">—</div>`);
@@ -386,13 +457,18 @@ function toggleExpand(card) {
 
 // Click a card (or its expand button) to toggle its description.
 document.getElementById("board").addEventListener("click", (e) => {
+  if (e.target.closest(".col-add")) { openEditor("create"); return; }
   const actionBtn = e.target.closest(".card-actions button");
   if (actionBtn) {
     e.stopPropagation();
     const card = actionBtn.closest(".card");
     if (actionBtn.dataset.action === "copy") sendCardToClaude(card);
     else if (actionBtn.dataset.action === "expand") toggleExpand(card);
-    // edit still to come
+    else if (actionBtn.dataset.action === "edit") openEditor("edit", {
+      number: Number(card.dataset.ref),
+      title: card.querySelector(".title").textContent,
+      notes: (card.querySelector(".notes") || {}).textContent || "",
+    });
     return;
   }
   toggleExpand(e.target.closest(".card.has-notes"));
