@@ -16,6 +16,7 @@ import json, os, sys, subprocess, threading, time, datetime, http.server, socket
 HERE = os.path.dirname(os.path.abspath(__file__))
 META_PATH = os.path.join(HERE, ".vibemap", "meta.json")
 BOARD_PATH = os.path.join(HERE, "roadmap.json")
+BOARD_HTML = os.path.join(HERE, "roadmap-board.html")
 REPO = os.environ.get("VIBEMAP_REPO")
 PORT = int(os.environ.get("VIBEMAP_PORT", "7777"))
 SYNC_SECONDS = int(os.environ.get("VIBEMAP_SYNC_SECONDS", "45"))
@@ -110,6 +111,7 @@ def build_board(issues, meta):
                       "status": "done" if closed else meta["status"].get(n, "backlog"),
                       "labels": [{"name": l["name"], "color": l.get("color", "")} for l in i.get("labels", [])]})
     return {"updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "board_version": str(int(os.path.getmtime(BOARD_HTML))),
             "items": items}
 
 
@@ -182,6 +184,24 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")   # always serve the latest board on reload
         super().end_headers()
+
+    def do_GET(self):
+        # serve the board HTML with its version stamped in, so a stale/cached page can self-reload
+        if self.path.split("?")[0] in ("/", "/roadmap-board.html"):
+            try:
+                v = str(int(os.path.getmtime(BOARD_HTML)))
+                html = open(BOARD_HTML, encoding="utf-8").read().replace(
+                    "</head>", f'<script>window.__BV="{v}";</script>\n</head>', 1)
+                data = html.encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return
+            except Exception as e:
+                print(f"[vibemap] GET html error: {e}", file=sys.stderr, flush=True)
+        super().do_GET()
 
     def do_POST(self):
         path = self.path.split("?")[0]

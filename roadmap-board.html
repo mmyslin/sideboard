@@ -524,8 +524,11 @@ async function poll() {
     const res = await fetch("roadmap.json?_=" + Date.now(), { cache: "no-store" });
     if (!res.ok) throw new Error(res.status);
     const raw = await res.text();
-    if (raw !== lastRaw) { lastRaw = raw; render(JSON.parse(raw)); }
     const data = JSON.parse(raw);
+    if (window.__BV && data.board_version && data.board_version !== window.__BV) {
+      location.replace(location.pathname + "?_bv=" + data.board_version); return;   // stale HTML -> reload fresh
+    }
+    if (raw !== lastRaw) { lastRaw = raw; render(data); }
     const age = data.updated_at ? Date.now() - new Date(data.updated_at).getTime() : 0;
     setStatus(age > 3600000 ? "stale" : "ok", data);
   } catch (e) {
