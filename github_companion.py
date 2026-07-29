@@ -11,7 +11,7 @@ Serves the board and exposes POST /api/drop for move+reorder:
 
 Env: VIBEMAP_REPO (owner/name), VIBEMAP_PORT (7777), VIBEMAP_SYNC_SECONDS (45)
 """
-import json, os, sys, subprocess, threading, time, datetime, http.server, socketserver
+import json, os, sys, shutil, subprocess, threading, time, datetime, http.server, socketserver
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 META_PATH = os.path.join(HERE, ".vibemap", "meta.json")
@@ -64,6 +64,56 @@ def gh_remove_label(n, name):
                    + (["--repo", REPO] if REPO else []), check=True, capture_output=True, text=True)
 
 
+# ---- sidecar: schema versioning + migrations --------------------------------
+# meta.json is the committed source of truth; its shape is versioned. Consumers
+# vendor this companion and upgrade by re-copying it — so an older on-disk
+# sidecar must migrate itself forward automatically, with the user doing nothing.
+# The generated roadmap.json is disposable (rebuilt each sync) and never migrated.
+SCHEMA = 1   # bump when meta.json's shape changes; add a MIGRATIONS entry for the step
+
+
+def _migrate_0_to_1(m):
+    """v0 sidecars ({status, order}) predate per-tag colors — add the fields."""
+    m.setdefault("tag_colors", {})
+    m.setdefault("next_color", 0)
+    return m
+
+
+MIGRATIONS = {0: _migrate_0_to_1}   # from_version -> function producing the next version
+
+
+def _migrate(m):
+    """Run the ladder oldest->newest in place, stamping the final schema."""
+    v = int(m.get("schema", 0))
+    while v < SCHEMA:
+        fn = MIGRATIONS.get(v)
+        if fn is None:
+            raise RuntimeError(f"no migration path from meta schema v{v} to v{SCHEMA}")
+        m = fn(m); v += 1
+    m["schema"] = SCHEMA
+    return m
+
+
+def migrate_startup():
+    """Once, at launch: upgrade an older on-disk sidecar to the current schema."""
+    try:
+        raw = json.load(open(META_PATH))
+    except FileNotFoundError:
+        return
+    v = int(raw.get("schema", 0))
+    if v > SCHEMA:
+        print(f"[vibemap] warning: sidecar schema v{v} is newer than this companion "
+              f"(v{SCHEMA}); update the companion to avoid dropping fields it doesn't know.",
+              file=sys.stderr, flush=True)
+        return
+    if v == SCHEMA:
+        return
+    shutil.copy(META_PATH, f"{META_PATH}.v{v}.bak")   # keep the pre-migration file, just in case
+    save_meta(_migrate(raw))
+    print(f"[vibemap] migrated sidecar schema v{v} -> v{SCHEMA} "
+          f"(backup: {os.path.basename(META_PATH)}.v{v}.bak)", flush=True)
+
+
 # ---- sidecar + merge --------------------------------------------------------
 def load_meta():
     try:
@@ -76,8 +126,9 @@ def load_meta():
 
 def save_meta(meta):
     os.makedirs(os.path.dirname(META_PATH), exist_ok=True)
-    # deterministic output (status sorted by issue number) so periodic rewrites don't churn git
-    stable = {"status": {k: meta["status"][k] for k in sorted(meta["status"], key=int)},
+    # deterministic output (schema first, status sorted by issue number) so rewrites don't churn git
+    stable = {"schema": SCHEMA,
+              "status": {k: meta["status"][k] for k in sorted(meta["status"], key=int)},
               "order": meta["order"],
               "next_color": meta.get("next_color", 0),
               "tag_colors": {k: meta["tag_colors"][k] for k in sorted(meta.get("tag_colors", {}))}}
@@ -248,6 +299,7 @@ def sync_loop():
 
 if __name__ == "__main__":
     os.chdir(HERE)
+    migrate_startup()
     try:
         print(f"[vibemap] initial sync: {sync()} items", flush=True)
     except Exception as e:

@@ -24,8 +24,11 @@ one place — no dual-sourced "done".
 ### Sidecar — `.vibemap/meta.json` (committed; the durable board layout)
 ```json
 {
+  "schema": 1,                                         // shape version (see below)
   "status": { "12": "in_progress", "8": "backlog" },   // OPEN issues only
-  "order":  [12, 8, 15, 3]                              // global rank; columns derived
+  "order":  [12, 8, 15, 3],                            // global rank; columns derived
+  "next_color": 3,                                     // round-robin tag-color counter
+  "tag_colors": { "bug": 0, "infra": 1, "ux": 2 }      // permanent per-tag color index
 }
 ```
 
@@ -110,6 +113,34 @@ One-time script: for each current item, `gh issue create --title <title> --body
 <notes>` (create done items then `gh issue close`); build `.vibemap/meta.json`
 from current `status`/order; gitignore the generated `roadmap.json`; drop `seq`.
 Refs renumber to issue numbers (accepted as trivial).
+
+## Schema versioning & upgrades (#34)
+
+VibeMap is vendored into consumer projects: they commit a copy of
+`github_companion.py` + `roadmap-board.html` and **upgrade by re-copying those
+files** (a reviewable git diff; each project pins a known-good version). Two
+things version independently, with very different upgrade profiles:
+
+- **The renderer** (`roadmap-board.html`) is stateless and disposable. Upgrade =
+  overwrite. It stays a *tolerant reader*: ignore unknown fields, default missing
+  ones — so an old board renders new data and a new board renders old data.
+- **The data** (`.vibemap/meta.json`) is precious, so its shape is **versioned**
+  with a `schema` integer.
+
+**Automatic migration.** `github_companion.py` carries a `SCHEMA` constant and a
+`MIGRATIONS` ladder (`v(k) → v(k+1)` functions). On startup, if the on-disk
+sidecar's `schema < SCHEMA`, the companion backs it up (`meta.json.v{k}.bak`,
+gitignored), runs the ladder oldest→newest, stamps the new version, and saves —
+**the end user does nothing** but re-copy the file and relaunch. A sidecar newer
+than the companion is left untouched with a warning (don't run an old companion
+against new data). The generated `roadmap.json` is never migrated (rebuilt each
+sync).
+
+**How we avoid breaking changes:** *additive-first* discipline — prefer adding
+fields to renaming/removing them (old readers ignore additions; new readers
+default omissions), so most changes need no migration at all. Reserve real
+`MIGRATIONS` entries for the rare unavoidable structural change (e.g. the
+local-file→sidecar move, or v0→v1 which added `tag_colors`/`next_color`).
 
 ## Phasing
 
