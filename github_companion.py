@@ -70,14 +70,17 @@ def load_meta():
         m = json.load(open(META_PATH))
     except FileNotFoundError:
         m = {}
-    return {"status": dict(m.get("status", {})), "order": [str(n) for n in m.get("order", [])]}
+    return {"status": dict(m.get("status", {})), "order": [str(n) for n in m.get("order", [])],
+            "tag_colors": dict(m.get("tag_colors", {})), "next_color": m.get("next_color", 0)}
 
 
 def save_meta(meta):
     os.makedirs(os.path.dirname(META_PATH), exist_ok=True)
     # deterministic output (status sorted by issue number) so periodic rewrites don't churn git
     stable = {"status": {k: meta["status"][k] for k in sorted(meta["status"], key=int)},
-              "order": meta["order"]}
+              "order": meta["order"],
+              "next_color": meta.get("next_color", 0),
+              "tag_colors": {k: meta["tag_colors"][k] for k in sorted(meta.get("tag_colors", {}))}}
     json.dump(stable, open(META_PATH, "w"), indent=2)
 
 
@@ -95,7 +98,14 @@ def reconcile(issues, meta):
         n = str(i["number"])
         if n not in order:
             order.append(n)
-    return {"status": status, "order": order}
+    # assign each tag a monotonic color index the first time it's seen (round-robin in the board);
+    # never pruned, so a tag keeps its color permanently across sessions
+    tag_colors, next_color = dict(meta["tag_colors"]), meta["next_color"]
+    for name in sorted({l["name"] for i in issues for l in i.get("labels", [])}):
+        if name not in tag_colors:
+            tag_colors[name] = next_color
+            next_color += 1
+    return {"status": status, "order": order, "tag_colors": tag_colors, "next_color": next_color}
 
 
 def build_board(issues, meta):
@@ -109,7 +119,7 @@ def build_board(issues, meta):
         items.append({"ref": int(n), "id": f"gh-{n}", "title": i["title"],
                       "notes": i.get("body") or "",
                       "status": "done" if closed else meta["status"].get(n, "backlog"),
-                      "labels": [{"name": l["name"], "color": l.get("color", "")} for l in i.get("labels", [])]})
+                      "labels": [{"name": l["name"], "colorIndex": meta["tag_colors"].get(l["name"])} for l in i.get("labels", [])]})
     return {"updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "board_version": str(int(os.path.getmtime(BOARD_HTML))),
             "items": items}
