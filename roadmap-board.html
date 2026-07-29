@@ -130,9 +130,9 @@
     animation: fadein .2s ease;
   }
   .card.dragging { opacity: .4; }
-  .card-head { display: flex; align-items: flex-start; gap: 5px; }
+  .card-head { line-height: 1.45; }
   .card.has-notes .card-head { cursor: pointer; }
-  .card .title { font-weight: 400; font-size: 12.5px; flex: 1; min-width: 0; }
+  .card .title { font-weight: 400; font-size: 12.5px; }
   /* hover controls (dummy for now) */
   .card-actions {
     position: absolute; top: 3px; right: 6px;
@@ -219,8 +219,11 @@
     border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
   }
   #card-editor .ce-save { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .card .tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
-  .card .tag { font-size: 9px; line-height: 1; padding: 2px 5px; border-radius: 7px; white-space: nowrap; font-weight: 600; }
+  .card .tag {
+    display: inline-block; vertical-align: middle; margin-left: 5px;
+    font-variant: small-caps; letter-spacing: .03em; font-weight: 600;
+    font-size: 10px; line-height: 1.5; padding: 0 6px; border-radius: 8px; white-space: nowrap;
+  }
   #card-editor .te-title { font-size: 12px; font-weight: 600; color: var(--text); }
   #card-editor .te-chips { display: flex; flex-wrap: wrap; gap: 4px; min-height: 14px; }
   #card-editor .te-chip {
@@ -269,6 +272,14 @@ function contrastText(hex) {
   hex = (hex || "808080").replace("#", "");
   const r = parseInt(hex.slice(0, 2), 16), g = parseInt(hex.slice(2, 4), 16), b = parseInt(hex.slice(4, 6), 16);
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6 ? "#1a1a1a" : "#fff";
+}
+
+// Light versions of the 9-color palette; each tag maps deterministically to one.
+const TAG_PALETTE = ["#c5e8cf", "#bce6de", "#c2dbf0", "#cdd0f2", "#ddccf0", "#f4cbdd", "#f9caca", "#fbd8be", "#efdaa9"];
+function tagColor(name) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return TAG_PALETTE[h % TAG_PALETTE.length];
 }
 
 let lastRaw = "";
@@ -380,7 +391,7 @@ function openEditor(mode, data) {
 // Manage a card's tags -> POST /api/label (github mode; tags = GitHub labels).
 function openTags(card) {
   const number = Number(card.dataset.ref);
-  let tags = [...card.querySelectorAll(".tags .tag")].map(t => t.textContent);
+  let tags = [...card.querySelectorAll(".card-head .tag")].map(t => t.textContent);
   document.getElementById("card-editor")?.remove();
   const m = document.createElement("div");
   m.id = "card-editor";
@@ -489,9 +500,8 @@ function render(data) {
             <button type="button" data-action="tag" title="Tags" aria-label="Tags">${ICON.tag}</button>
           </div>
           <div class="card-head">
-            <span class="title">${esc(it.title)}</span>
+            <span class="title">${esc(it.title)}</span>${(it.labels || []).map(l => `<span class="tag" style="background:${tagColor(l.name)};color:${contrastText(tagColor(l.name))}">${esc(l.name)}</span>`).join("")}
           </div>
-          ${(it.labels && it.labels.length) ? `<div class="tags">${it.labels.map(l => `<span class="tag" style="background:#${esc(l.color)};color:${contrastText(l.color)}">${esc(l.name)}</span>`).join("")}</div>` : ""}
           ${hasNotes ? `<div class="notes">${esc(it.notes)}</div>` : ""}
           ${it.ref != null ? `<div class="ref"${it.updated_at ? ` title="updated ${rel(it.updated_at)}"` : ""}>#${esc(it.ref)}</div>` : ""}
         </div>`);
