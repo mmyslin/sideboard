@@ -219,6 +219,18 @@
     border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
   }
   #card-editor .ce-save { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .card .tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+  .card .tag { font-size: 9px; line-height: 1; padding: 2px 5px; border-radius: 7px; white-space: nowrap; font-weight: 600; }
+  #card-editor .te-title { font-size: 12px; font-weight: 600; color: var(--text); }
+  #card-editor .te-chips { display: flex; flex-wrap: wrap; gap: 4px; min-height: 14px; }
+  #card-editor .te-chip {
+    display: inline-flex; align-items: center; gap: 2px; font-size: 10px;
+    padding: 2px 3px 2px 7px; border-radius: 9px;
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+  }
+  #card-editor .te-chip button { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 12px; line-height: 1; padding: 0 2px; }
+  #card-editor .te-chip button:hover { color: var(--text); }
+  #card-editor .te-empty { font-size: 10px; color: var(--muted); font-style: italic; }
 </style>
 </head>
 <body>
@@ -244,7 +256,14 @@ const ICON = {
   copy:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
   edit:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
   expand: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>',
+  tag:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>',
 };
+
+function contrastText(hex) {
+  hex = (hex || "808080").replace("#", "");
+  const r = parseInt(hex.slice(0, 2), 16), g = parseInt(hex.slice(2, 4), 16), b = parseInt(hex.slice(4, 6), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6 ? "#1a1a1a" : "#fff";
+}
 
 let lastRaw = "";
 const expanded = new Set();   // item ids whose description is expanded (persists across re-renders)
@@ -352,6 +371,50 @@ function openEditor(mode, data) {
   titleEl.focus();
 }
 
+// Manage a card's tags -> POST /api/label (github mode; tags = GitHub labels).
+function openTags(card) {
+  const number = Number(card.dataset.ref);
+  let tags = [...card.querySelectorAll(".tags .tag")].map(t => t.textContent);
+  document.getElementById("card-editor")?.remove();
+  const m = document.createElement("div");
+  m.id = "card-editor";
+  m.innerHTML = `<div class="ce-box">
+      <div class="te-title">Tags</div>
+      <div class="te-chips"></div>
+      <input class="ce-title" type="text" placeholder="Add a tag…" />
+      <div class="ce-row"><button type="button" class="ce-cancel">Done</button></div>
+    </div>`;
+  const chipsEl = m.querySelector(".te-chips");
+  const input = m.querySelector("input");
+  const post = (payload) => fetch("/api/label", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(Object.assign({ number }, payload)),
+  }).then(r => { if (!r.ok) throw new Error(r.status); })
+    .catch(() => toast("Tag change not saved — is the companion running?"));
+  const renderChips = () => {
+    chipsEl.innerHTML = tags.length
+      ? tags.map(t => `<span class="te-chip">${esc(t)}<button type="button" data-rm="${esc(t)}" aria-label="Remove">×</button></span>`).join("")
+      : `<span class="te-empty">no tags yet</span>`;
+  };
+  chipsEl.addEventListener("click", (e) => {
+    const rm = e.target.getAttribute && e.target.getAttribute("data-rm");
+    if (!rm) return;
+    tags = tags.filter(t => t !== rm); renderChips(); post({ remove: rm });
+  });
+  const add = () => {
+    const name = input.value.trim();
+    input.value = "";
+    if (!name || tags.includes(name)) return;
+    tags.push(name); renderChips(); post({ add: name });
+  };
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); add(); } });
+  m.querySelector(".ce-cancel").addEventListener("click", () => m.remove());
+  m.addEventListener("mousedown", (e) => { if (e.target === m) m.remove(); });
+  renderChips();
+  document.body.appendChild(m);
+  input.focus();
+}
+
 // Copy that works inside embedded panes. The async Clipboard API rejects with
 // "Document is not focused" there, so try the in-gesture execCommand path first
 // (copies the current selection during a real click) and fall back to the async API.
@@ -413,10 +476,12 @@ function render(data) {
             <button type="button" data-action="copy" title="Copy a prompt to send to Claude" aria-label="Copy a prompt to send to Claude">${ICON.copy}</button>
             <button type="button" data-action="edit" title="Edit card" aria-label="Edit card">${ICON.edit}</button>
             <button type="button" data-action="expand" title="Expand card" aria-label="Expand card">${ICON.expand}</button>
+            <button type="button" data-action="tag" title="Tags" aria-label="Tags">${ICON.tag}</button>
           </div>
           <div class="card-head">
             <span class="title">${esc(it.title)}</span>
           </div>
+          ${(it.labels && it.labels.length) ? `<div class="tags">${it.labels.map(l => `<span class="tag" style="background:#${esc(l.color)};color:${contrastText(l.color)}">${esc(l.name)}</span>`).join("")}</div>` : ""}
           ${hasNotes ? `<div class="notes">${esc(it.notes)}</div>` : ""}
           ${it.ref != null ? `<div class="ref"${it.updated_at ? ` title="updated ${rel(it.updated_at)}"` : ""}>#${esc(it.ref)}</div>` : ""}
         </div>`);
@@ -469,6 +534,7 @@ document.getElementById("board").addEventListener("click", (e) => {
       title: card.querySelector(".title").textContent,
       notes: (card.querySelector(".notes") || {}).textContent || "",
     });
+    else if (actionBtn.dataset.action === "tag") openTags(card);
     return;
   }
   toggleExpand(e.target.closest(".card.has-notes"));

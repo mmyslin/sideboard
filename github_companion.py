@@ -32,7 +32,7 @@ def _gh(*args):
 
 def fetch_issues():
     return json.loads(_gh("issue", "list", "--state", "all", "--limit", "1000",
-                          "--json", "number,title,body,state"))
+                          "--json", "number,title,body,state,labels"))
 
 
 def gh_close(n):  subprocess.check_call(["gh", "issue", "close", str(n)] + (["--repo", REPO] if REPO else []), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -48,6 +48,19 @@ def gh_create(title, body):
 def gh_edit(n, title, body):
     subprocess.run(["gh", "issue", "edit", str(n), "--title", title, "--body", body or ""]
                    + (["--repo", REPO] if REPO else []), check=True, text=True, capture_output=True)
+
+
+def gh_add_label(n, name):
+    # create the label if it doesn't exist yet (ignore "already exists"), then attach it
+    subprocess.run(["gh", "label", "create", name] + (["--repo", REPO] if REPO else []),
+                   capture_output=True, text=True)
+    subprocess.run(["gh", "issue", "edit", str(n), "--add-label", name]
+                   + (["--repo", REPO] if REPO else []), check=True, capture_output=True, text=True)
+
+
+def gh_remove_label(n, name):
+    subprocess.run(["gh", "issue", "edit", str(n), "--remove-label", name]
+                   + (["--repo", REPO] if REPO else []), check=True, capture_output=True, text=True)
 
 
 # ---- sidecar + merge --------------------------------------------------------
@@ -76,7 +89,7 @@ def reconcile(issues, meta):
         if i["state"].lower() == "open" and n not in status:
             status[n] = "backlog"
     status = {n: s for n, s in status.items() if n in present}
-    order = [n for n in order if n in present]
+    order = list(dict.fromkeys(n for n in order if n in present))   # keep present, drop any duplicates
     for i in issues:
         n = str(i["number"])
         if n not in order:
@@ -94,7 +107,8 @@ def build_board(issues, meta):
         closed = i["state"].lower() == "closed"
         items.append({"ref": int(n), "id": f"gh-{n}", "title": i["title"],
                       "notes": i.get("body") or "",
-                      "status": "done" if closed else meta["status"].get(n, "backlog")})
+                      "status": "done" if closed else meta["status"].get(n, "backlog"),
+                      "labels": [{"name": l["name"], "color": l.get("color", "")} for l in i.get("labels", [])]})
     return {"updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "items": items}
 
@@ -153,6 +167,14 @@ def edit_issue(n, title, body):
     sync()
 
 
+def label_issue(number, add=None, remove=None):
+    if add:
+        gh_add_label(number, add)
+    if remove:
+        gh_remove_label(number, remove)
+    sync()
+
+
 # ---- HTTP -------------------------------------------------------------------
 class Handler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *a): pass
@@ -172,6 +194,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 resp = {"ok": True, "number": create_issue(body["title"], body.get("notes", ""))}
             elif path == "/api/edit":
                 edit_issue(body["number"], body["title"], body.get("notes", ""))
+                resp = {"ok": True}
+            elif path == "/api/label":
+                label_issue(body["number"], body.get("add"), body.get("remove"))
                 resp = {"ok": True}
             else:
                 self.send_error(404); return
