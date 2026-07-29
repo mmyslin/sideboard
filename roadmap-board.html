@@ -231,6 +231,12 @@
   #card-editor .te-chip button { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 12px; line-height: 1; padding: 0 2px; }
   #card-editor .te-chip button:hover { color: var(--text); }
   #card-editor .te-empty { font-size: 10px; color: var(--muted); font-style: italic; }
+  #card-editor .te-add-row { display: flex; gap: 6px; }
+  #card-editor .te-add-row input { flex: 1; }
+  #card-editor .te-add {
+    font-size: 11.5px; padding: 4px 12px; border-radius: 5px; cursor: pointer;
+    border: 1px solid var(--accent); background: var(--accent); color: #fff;
+  }
 </style>
 </head>
 <body>
@@ -381,7 +387,10 @@ function openTags(card) {
   m.innerHTML = `<div class="ce-box">
       <div class="te-title">Tags</div>
       <div class="te-chips"></div>
-      <input class="ce-title" type="text" placeholder="Add a tag…" />
+      <div class="te-add-row">
+        <input class="ce-title" type="text" placeholder="Add a tag…" />
+        <button type="button" class="te-add">Add</button>
+      </div>
       <div class="ce-row"><button type="button" class="ce-cancel">Done</button></div>
     </div>`;
   const chipsEl = m.querySelector(".te-chips");
@@ -408,7 +417,8 @@ function openTags(card) {
     tags.push(name); renderChips(); post({ add: name });
   };
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); add(); } });
-  m.querySelector(".ce-cancel").addEventListener("click", () => m.remove());
+  m.querySelector(".te-add").addEventListener("click", add);
+  m.querySelector(".ce-cancel").addEventListener("click", () => { add(); m.remove(); });  // commit pending input on Done
   m.addEventListener("mousedown", (e) => { if (e.target === m) m.remove(); });
   renderChips();
   document.body.appendChild(m);
