@@ -462,6 +462,14 @@ function render(data) {
   document.title = data.project ? data.project + " · Roadmap" : "Roadmap";   // per-project tab title (#37)
   const board = document.getElementById("board");
   const items = Array.isArray(data.items) ? data.items : [];
+  // snapshot scroll (each lane scrolls independently, plus the page) so a
+  // re-render restores position instead of jumping to the top (#42)
+  const prevScroll = {};
+  board.querySelectorAll(".col").forEach(c => {
+    const b = c.querySelector(".col-body");
+    if (b) prevScroll[c.dataset.key] = b.scrollTop;
+  });
+  const prevWinY = window.scrollY;
   board.innerHTML = "";
   const KNOWN = new Set(COLUMNS.map(c => c.key));
   COLUMNS.forEach((col, idx) => {
@@ -512,6 +520,12 @@ function render(data) {
     }
     board.appendChild(el);
   });
+  // restore the scroll positions captured before the rebuild (#42)
+  board.querySelectorAll(".col").forEach(c => {
+    const b = c.querySelector(".col-body");
+    if (b && prevScroll[c.dataset.key] != null) b.scrollTop = prevScroll[c.dataset.key];
+  });
+  window.scrollTo(0, prevWinY);
 }
 
 function setStatus(state, data) {
@@ -532,7 +546,11 @@ async function poll() {
     if (window.__BV && data.board_version && data.board_version !== window.__BV) {
       location.replace(location.pathname + "?_bv=" + data.board_version); return;   // stale HTML -> reload fresh
     }
-    if (raw !== lastRaw) { lastRaw = raw; render(data); }
+    // re-render only when the CONTENT changes — ignore updated_at, which the
+    // router re-stamps every sync (~45s) and would otherwise force a needless
+    // re-render (and scroll jump) even when nothing changed (#42)
+    const sig = JSON.stringify({ p: data.project, m: data.mode, items: data.items });
+    if (sig !== lastRaw) { lastRaw = sig; render(data); }
     const age = data.updated_at ? Date.now() - new Date(data.updated_at).getTime() : 0;
     setStatus(age > 3600000 ? "stale" : "ok", data);
   } catch (e) {
