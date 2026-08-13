@@ -6,6 +6,7 @@
 # this setup — cwd is always $HOME), and POSTs it to the router so the pinned
 # preview pane follows whatever project you're working in. Fire-and-forget;
 # boots the router if it's down. Never blocks the prompt (always exits 0).
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # router lives next to this script
 payload=$(cat)
 
 body=$(printf '%s' "$payload" | python3 -c "
@@ -26,7 +27,7 @@ post() {
 }
 
 if ! post; then
-  nohup python3 "$HOME/Documents/Projects/vibemap/vibemap_router.py" >/tmp/vibemap-router.log 2>&1 &
+  nohup python3 "$HERE/vibemap_router.py" >/tmp/vibemap-router.log 2>&1 &
   sleep 1
   post
 fi
