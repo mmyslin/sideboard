@@ -90,6 +90,13 @@
     min-height: 0;
   }
   .board.stacked { flex-direction: column; }
+  /* In Progress typically has 0-1 cards; default it to ~one card tall (header
+     19 + padding 10 + card 43 ≈ 76) instead of an equal third of the height.
+     Scoped to stacked view; a lane the user has dragged gets .user-sized and
+     opts out so drag-to-resize keeps working. */
+  .board.stacked .col[data-key="in_progress"]:not(.user-sized) {
+    flex: 0 0 auto; min-height: 76px; max-height: 96px;
+  }
   .col {
     flex: 1 1 0;
     min-width: 0;
@@ -523,7 +530,11 @@ function render(data) {
     const el = document.createElement("div");
     el.className = "col";
     el.dataset.key = col.key;
-    el.style.flexGrow = grow[col.key] ?? 1;
+    // In Progress usually holds 0-1 cards, so don't let it claim an equal
+    // share of height by default — let CSS size it to ~one card (stacked view).
+    // Any lane the user has dragged carries an explicit grow -> honor it as-is.
+    if (grow[col.key] != null) { el.style.flexGrow = grow[col.key]; el.classList.add("user-sized"); }
+    else if (col.key !== "in_progress") { el.style.flexGrow = 1; }
     const add = col.key === "backlog" ? `<button class="col-add" type="button" title="Add item" aria-label="Add item">+</button>` : "";
     el.innerHTML = `<div class="col-head"><span class="bar" style="background:${col.color}"></span>${col.label}<span class="count">${inCol.length}</span>${add}</div><div class="col-body"></div>`;
     const body = el.querySelector(".col-body");
