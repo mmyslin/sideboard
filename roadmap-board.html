@@ -55,7 +55,7 @@
     display: inline-flex; align-items: center; gap: 8px; font-family: inherit;
     background: var(--panel-2); color: var(--text);
     border: 1px solid var(--border); border-radius: 8px;
-    padding: 3px 8px 3px 10px; font-size: 12px; font-weight: 700; line-height: 1.5;
+    padding: 3px 8px 3px 10px; font-size: 12px; font-weight: 500; line-height: 1.5;
     cursor: pointer; letter-spacing: .01em;
   }
   .proj-btn:hover { background: color-mix(in srgb, var(--panel-2) 82%, var(--text) 10%); }
@@ -74,7 +74,7 @@
   .proj-item:hover { background: var(--panel-2); }
   .proj-item .check { flex: none; width: 13px; height: 13px; color: var(--c-backlog); visibility: hidden; }
   .proj-item.sel .check { visibility: visible; }
-  .proj-item.sel { font-weight: 700; }
+  .proj-item.sel { font-weight: 600; }
   .proj-item.auto { border-bottom: 1px solid var(--border); border-radius: 6px 6px 0 0; margin-bottom: 3px; padding-bottom: 7px; }
   .proj-item .sub { color: var(--muted); font-weight: 400; font-size: 10.5px; margin-left: 2px; }
   header .meta { color: var(--muted); font-size: 9.5px; letter-spacing: .04em; margin-left: auto; display: flex; align-items: center; gap: 6px; text-transform: uppercase; }
@@ -494,7 +494,7 @@ function copyText(text) {
 
 function render(data) {
   document.getElementById("project").textContent = data.project || "Roadmap";
-  document.title = data.project ? data.project + " · Roadmap" : "Roadmap";   // per-project tab title (#37)
+  document.title = "Roadmap";   // fixed title — project can change under a single pane (#37 reverted)
   const board = document.getElementById("board");
   const items = Array.isArray(data.items) ? data.items : [];
   // snapshot scroll (each lane scrolls independently, plus the page) so a
