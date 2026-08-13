@@ -15,19 +15,33 @@
     "28": "backlog",
     "29": "backlog",
     "31": "in_progress",
-    "35": "backlog"
+    "35": "backlog",
+    "36": "backlog",
+    "37": "backlog",
+    "38": "backlog",
+    "39": "backlog",
+    "40": "backlog",
+    "41": "backlog",
+    "42": "backlog",
+    "43": "backlog"
   },
   "order": [
     "8",
     "9",
     "11",
     "12",
-    "22",
     "14",
+    "22",
     "26",
     "27",
     "29",
     "7",
+    "35",
+    "38",
+    "39",
+    "41",
+    "40",
+    "43",
     "31",
     "10",
     "25",
@@ -50,12 +64,15 @@
     "24",
     "30",
     "34",
-    "35"
+    "37",
+    "36",
+    "42"
   ],
-  "next_color": 3,
+  "next_color": 4,
   "tag_colors": {
     "good first issue": 0,
     "recommendations": 2,
+    "slash commands": 3,
     "ui": 1
   }
 }
