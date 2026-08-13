@@ -1,13 +1,16 @@
 ---
 description: Open the VibeMap roadmap board in the preview pane
+model: haiku
+effort: low
 ---
-Open the VibeMap roadmap board — nothing else. The router is already running (the
-session hook boots it), so this must be as fast/cheap as possible.
+Open the VibeMap roadmap board. This is a TRIVIAL one-step task — do not think,
+plan, analyze, or deliberate. The router is already running (the session hook
+boots it).
 
-In ONE response: write just "Board's up." AND in that same response call
-preview_start once with url `http://127.0.0.1:7777/roadmap-board.html`. That's
-it — the confirmation is optimistic so you don't spend a second turn on it.
+Do exactly this, nothing more:
+1. Call preview_start ONCE with url `http://127.0.0.1:7777/roadmap-board.html`.
+2. After the result, reply with ONE short line (e.g. "Board's up.") and STOP.
 
-Do NOT run Bash, navigate, screenshot, read the page, or otherwise verify. After
-the tool result, add nothing further — unless preview_start clearly failed, in
-which case run `./vibemap-up.sh` once, retry preview_start, and stop.
+No Bash, navigate, screenshot, page reading, or verification. No further
+reasoning or actions after step 2. Only if preview_start clearly failed: run
+`./vibemap-up.sh` once, retry, stop.
