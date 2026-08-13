@@ -9,8 +9,10 @@ against ~/Documents/Projects, cached in a registry) and serves that project's
 board. The preview pane is pinned to :7777 once; its content then follows
 whichever project you're working in — no per-project companions, no port fights.
 
-Supports both modes per project: github mode (.vibemap/meta.json + gh issues)
-and legacy local-file mode (roadmap.json, served read-only).
+GitHub mode only: a project is a git repo whose roadmap lives in GitHub Issues,
+with a committed `.vibemap/meta.json` sidecar holding the swimlane split, card
+order, and per-tag colors. Discovery keys off that sidecar; the router rebuilds
+the board by reconciling the sidecar against `gh issue list`.
 
   python3 vibemap_router.py     # serve :7777, follow the active project
 """
@@ -24,7 +26,7 @@ PROJECTS_ROOT = os.path.abspath(os.environ.get(
     "VIBEMAP_PROJECTS_ROOT", os.path.join(HOME, "Documents", "Projects")))
 PORT = int(os.environ.get("VIBEMAP_PORT", "7777"))
 SYNC_SECONDS = int(os.environ.get("VIBEMAP_SYNC_SECONDS", "45"))
-SCHEMA = 1   # mirrors github_companion.SCHEMA
+SCHEMA = 1   # .vibemap/meta.json schema version (migrated forward on load)
 
 LOCK = threading.RLock()
 STATE = {"active": None}     # active Project or None
@@ -57,8 +59,7 @@ def _candidate_dirs():
     try:
         for name in sorted(os.listdir(PROJECTS_ROOT)):
             d = os.path.join(PROJECTS_ROOT, name)
-            if os.path.isdir(d) and (os.path.exists(os.path.join(d, ".vibemap", "meta.json"))
-                                     or os.path.exists(os.path.join(d, "roadmap.json"))):
+            if os.path.isdir(d) and os.path.exists(os.path.join(d, ".vibemap", "meta.json")):
                 out.append(d)
     except FileNotFoundError:
         pass
@@ -121,11 +122,10 @@ class Project:
         self.path = path
         self.title = None
         self.meta_path = os.path.join(path, ".vibemap", "meta.json")
-        self.roadmap_json = os.path.join(path, "roadmap.json")
-        self.github = os.path.exists(self.meta_path)
-        self.repo = self._detect_repo() if self.github else None
+        self.repo = self._detect_repo()
         self.issues = []
         self.synced_at = None      # stamped on each sync; keeps updated_at stable between syncs (#42)
+        self.error = None          # human-readable reason the board can't load (no repo / gh auth / issues)
         self.lock = threading.RLock()
 
     def _detect_repo(self):
@@ -158,9 +158,7 @@ class Project:
         json.dump(stable, open(self.meta_path, "w"), indent=2)
 
     def migrate(self):
-        """Upgrade an older sidecar to the current schema (mirrors github_companion)."""
-        if not self.github:
-            return
+        """Upgrade an older sidecar to the current schema."""
         try:
             raw = json.load(open(self.meta_path))
         except FileNotFoundError:
@@ -199,27 +197,32 @@ class Project:
         return {"status": status, "order": order, "tag_colors": tag_colors, "next_color": next_color}
 
     def sync(self):
-        """Re-fetch issues + reconcile the sidecar (github mode); no-op for local mode."""
+        """Re-fetch issues + reconcile the sidecar. Records a human-readable
+        reason in self.error (surfaced on the board) if GitHub can't be reached
+        — no repo, gh not authenticated, or Issues disabled — instead of
+        silently serving an empty board."""
         with self.lock:
-            if not self.github:
+            if not self.repo:
+                self.error = ("No GitHub repo detected here. Sideboard is GitHub-only: "
+                              "run it from a repo, and make sure `gh auth login` is done.")
                 return
-            self.issues = json.loads(self._gh("issue", "list", "--state", "all", "--limit", "1000",
-                                              "--json", "number,title,body,state,labels"))
+            try:
+                self.issues = json.loads(self._gh("issue", "list", "--state", "all", "--limit", "1000",
+                                                  "--json", "number,title,body,state,labels"))
+            except subprocess.CalledProcessError as e:
+                self.error = (f"Couldn't read GitHub Issues for {self.repo}: "
+                              f"{(e.stderr or '').strip() or 'is `gh` authenticated and are Issues enabled?'}")
+                return
             self._save_meta(self._reconcile(self.issues, self._load_meta()))
             self.synced_at = _now()
+            self.error = None
 
     def board(self):
         with self.lock:
             bv = str(int(os.path.getmtime(BOARD_HTML)))
-            if not self.github:
-                try:
-                    data = json.load(open(self.roadmap_json))
-                except Exception:
-                    data = {"items": []}
-                data["project"] = self.title or data.get("project")
-                data["mode"] = "local"
-                data["board_version"] = bv
-                return data
+            if self.error:
+                return {"updated_at": self.synced_at or _now(), "project": self.title,
+                        "mode": "github", "board_version": bv, "items": [], "error": self.error}
             meta = self._load_meta()
             by_num = {str(i["number"]): i for i in self.issues}
             items = []
@@ -238,10 +241,8 @@ class Project:
             return {"updated_at": self.synced_at or _now(), "project": self.title, "mode": "github",
                     "board_version": bv, "items": items}
 
-    # -- writes (github mode; local mode is read-only) ------------------------
+    # -- writes ---------------------------------------------------------------
     def apply_drop(self, number, status, order):
-        if not self.github:
-            return
         n = str(number)
         with self.lock:
             issue = next((i for i in self.issues if str(i["number"]) == n), None)
@@ -347,7 +348,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         return self._send(200, json.dumps(empty))
                     p = get_project(d)
                     p.title = project_name(d)
-                    if p.github and not p.issues:
+                    if not p.issues:
                         _safe_sync(p)                      # blocking first load so it shows right away
                     board = p.board()
                 else:                                      # auto: follow the active project

@@ -4,8 +4,9 @@
 # The router follows the ACTIVE project (set by the SessionStart/UserPromptSubmit
 # hook -> vibemap-active.sh), so the pinned pane follows whatever project you're
 # in. Safe to run repeatedly; started detached. If :7777 is held by something
-# that ISN'T the router (a stale single-project companion, or a wedged process),
-# reclaim the port and start the router — this is the #35 "wrong server" fix.
+# that ISN'T the router (a wedged process, or a stale github_companion.py left
+# over from before it was retired), reclaim the port and start the router — this
+# is the #35 "wrong server" fix.
 url="http://127.0.0.1:7777/roadmap-board.html"
 cd "$(dirname "$0")" || exit 1
 

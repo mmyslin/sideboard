@@ -1,19 +1,16 @@
 # VibeMap — working notes for Claude
 
-This project **dogfoods "github mode"**: its roadmap lives in **GitHub Issues**
-(`mmyslin/vibemap`), not in `roadmap.json`.
+VibeMap's own roadmap lives in **GitHub Issues** (`mmyslin/vibemap`). The project
+is **GitHub-only** — there is no `roadmap.json` / local-file mode.
 
 - **Manage roadmap items via `gh`** — `gh issue create` / `edit` / `close` /
-  `reopen`. Do **NOT** edit `roadmap.json`: it's a generated artifact
-  (gitignored), rebuilt by `github_companion.py` from the issues + the
-  `.vibemap/meta.json` sidecar. Editing it does nothing durable.
-- **Swimlane (backlog vs in_progress) + card order** live in
-  `.vibemap/meta.json` (committed). **`done` = a closed issue.**
-- **A card's `#N` is its GitHub issue number.**
+  `reopen`. Swimlane (backlog vs in_progress) + card order live in
+  `.vibemap/meta.json` (committed sidecar); **`done` = a closed issue**; a card's
+  `#N` is its GitHub issue number. The sidecar is reconciled automatically by the
+  router from the issues + your drag/reorder — don't hand-edit it.
 - **Run the board:** `./vibemap-up.sh` — starts the **router**
   (`vibemap_router.py`) on :7777, which follows the *active* project and serves
-  its board. (`github_companion.py` is the older single-project server; the
-  router supersedes it for day-to-day use.) Then open the pane once per project.
+  its board. Then open the pane once per project (or use `/roadmap`).
 - **Multi-project / auto-follow (#35):** one router serves ALL projects. A global
   Claude Code hook (`vibemap-active.sh`, on SessionStart + UserPromptSubmit)
   POSTs the session TITLE to the router, which maps title→project dir
@@ -22,9 +19,12 @@ This project **dogfoods "github mode"**: its roadmap lives in **GitHub Issues**
   The preview pane is per-session, so open it once per project with `/roadmap`;
   thereafter switching projects (send a message) makes each project's pane show
   its own roadmap.
-- Design + phases: `docs/github-sync-design.md` (#15). Board-initiated writes
-  (Edit / move / add) are still to come — Phases 2–3; today the board is
-  read-only over GitHub.
+- **Discovery** keys off `.vibemap/meta.json`: a project is only picked up once
+  that sidecar exists. Bootstrap a new repo with
+  `mkdir -p .vibemap && printf '{"schema": 1}\n' > .vibemap/meta.json` (commit
+  it); the router reconciles it from the issues on first sync.
+- Design + phases: `docs/github-sync-design.md` (#15). Distribution plan: ship as
+  a Claude Code plugin (#12). Naming decision: #39.
 
-This overrides the global `vibemap` skill's "edit roadmap.json directly"
-guidance **for this repo only** (other projects still use local-file mode).
+The global `vibemap` skill (`skill/SKILL.md`) documents this same GitHub-only
+model — this file is just the repo-specific pointer.

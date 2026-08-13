@@ -1,69 +1,66 @@
 ---
 name: vibemap
-description: Maintain and display a live project roadmap/kanban board. Use when the user asks to see, set up, or update the roadmap, add a feature to build next, mark an item in-progress or done, or when a chat naturally decides on upcoming work worth tracking. Reads and writes roadmap.json in the project root and serves a live board in the preview pane.
+description: Maintain and display a live project roadmap/kanban board backed by GitHub Issues. Use when the user asks to see, set up, or update the roadmap, add a feature to build next, mark an item in-progress or done, or when a chat naturally decides on upcoming work worth tracking. Manages the roadmap via `gh` (GitHub Issues) and serves a live board in the preview pane.
 ---
 
-# vibemap — live roadmap board
+# vibemap — live roadmap board (GitHub Issues)
 
-A per-project roadmap kept in `roadmap.json` at the project root, rendered as a
-live kanban board (`roadmap-board.html`) that polls the JSON every 2s. Pin the
-board in the Claude Code desktop preview pane next to chat for an always-visible,
-auto-updating roadmap.
+A project's roadmap **is its GitHub Issues.** The board (`roadmap-board.html`),
+served by the router (`vibemap_router.py`) on :7777, renders those issues as a
+live kanban board and polls every 2s. Pin it in the Claude Code desktop preview
+pane next to chat for an always-visible, auto-updating roadmap.
 
-## Data model — `roadmap.json`
+There is **one mode: GitHub.** Manage the roadmap with `gh`, not a local file.
 
-```json
-{
-  "project": "Project Name",
-  "seq": 24,
-  "updated_at": "2026-01-01T00:00:00Z",
-  "items": [
-    { "id": "kebab-id", "ref": 12, "title": "Short feature title",
-      "status": "backlog|in_progress|done",
-      "notes": "optional one-liner",
-      "updated_at": "2026-01-01T00:00:00Z" }
-  ]
-}
-```
+## Prerequisites
+- A git repo with a GitHub remote, **Issues enabled**.
+- `gh` installed and authenticated (`gh auth login`).
+- `python3` on PATH (runs the local board server).
 
-- **Statuses / columns:** `backlog` → Backlog, `in_progress` → In Progress, `done` → Done. (These are the only statuses the board renders; any other value would not show.)
-- `id` is a stable kebab-case slug; never reuse or renumber ids.
-- `ref` is the card's human-facing number (shown as `#N`). When adding an item, set its `ref` to the top-level `seq`, then increment `seq`. **Never reuse a ref**, even after an item is deleted — always hand out `seq` and bump it.
-- Every write updates the changed item's `updated_at` AND the top-level `updated_at`, both ISO-8601 UTC.
+## Data model
+- **Each roadmap card is a GitHub issue.** `#N` = the issue number.
+- **Status → column:**
+  - open issue, sidecar status `backlog` → **Backlog**
+  - open issue, sidecar status `in_progress` → **In Progress**
+  - **closed issue → Done** (closing an issue *is* marking it done; reopening moves it back)
+- **Feature tags** are GitHub **labels**, shown as small-caps chips with stable per-tag colors.
+- **`.vibemap/meta.json`** (committed sidecar) holds what GitHub doesn't: the
+  backlog/in_progress split, card order, and per-tag color assignments. The
+  router **reconciles it automatically** on every sync — GitHub wins for
+  content and open/closed; the sidecar wins for swimlane split and order. You
+  normally never hand-edit it.
 
-## When to update (do this proactively, without being asked)
+## Updating the roadmap (do this proactively, without being asked)
+Keep the board honest during normal work, using `gh`:
+- User decides to build something → `gh issue create --title "…" [--body "…"]` (lands in Backlog).
+- You start on an item → move it to In Progress (drag on the board, or it's the sidecar `status`; the board's move does this for you).
+- Work lands / user confirms done → `gh issue close <N>`. Reopen with `gh issue reopen <N>`.
+- Scope/notes change → `gh issue edit <N> --title/--body`.
+- Add/remove a feature tag → `gh issue edit <N> --add-label "<tag>"` / `--remove-label`.
 
-During normal work, keep the board honest:
-- The user decides to build something → add an item to `backlog`.
-- You start working on an item → set it `in_progress`.
-- Work lands / user confirms done → set it `done`.
-- Scope/notes change → edit `notes`.
-
-Make the edit by reading `roadmap.json`, modifying the item, and writing it back
-as valid JSON. Keep it terse — this is a glanceable board, not an issue tracker.
-Mention roadmap changes in one short line; don't derail the main task.
+Keep titles terse — this is a glanceable board, not a spec. Mention roadmap
+changes in one short line; don't derail the main task. **Do not create or edit a
+`roadmap.json`** — local-file mode no longer exists.
 
 ## Referring to cards by number
-
-The user may name a card by its number — `#10`, "do #10", "what's #21?",
-"move #7 to in progress", "close out #3". Resolve it to the item in `roadmap.json`
-whose `ref` equals that number, then act on that item (implement it, change its
-status, edit its notes, or just answer about it). `#N` means `ref` — never the
-array position or the kebab `id`. If no item has that `ref`, say so plainly
-instead of guessing at the closest match.
+`#N` means the **GitHub issue number** — `#10`, "do #10", "move #7 to in
+progress", "close out #3". Resolve it to issue N and act (implement it, change
+status, edit, or just answer). If no issue N exists, say so plainly rather than
+guessing at the closest match.
 
 ## Setup / bootstrap (first run in a project)
-
-If `roadmap.json` does not exist in the project root:
-1. Copy the board next to it: `cp ~/.claude/skills/vibemap/roadmap-board.html <project>/roadmap-board.html`
-2. Create `roadmap.json` with the project name and any items evident from the chat (else an empty `items: []`).
-3. Serve the project root so the board can fetch the JSON over http (file:// blocks the fetch):
-   `cd <project> && python3 -m http.server 7777` (run in background).
-4. Open `http://127.0.0.1:7777/roadmap-board.html` in the preview pane, then drag/save the layout so it sits beside chat.
-
-Suggest adding `roadmap-board.html` to `.gitignore` if the board shouldn't be committed (`roadmap.json` is usually worth committing).
+1. Confirm prerequisites above (`gh auth status`, Issues enabled on the repo).
+2. Create the sidecar so the router discovers the project:
+   `mkdir -p .vibemap && printf '{"schema": 1}\n' > .vibemap/meta.json` — then
+   commit it. The router reconciles it from your existing issues on first sync
+   (all open issues start in Backlog; reorder/split by dragging on the board).
+3. Start the board server: run `~/.claude/skills/vibemap/vibemap-up.sh` (starts
+   the router on :7777, following the active project).
+4. Open `http://127.0.0.1:7777/roadmap-board.html` in the preview pane and dock
+   it beside chat.
 
 ## Displaying on demand
-
-If the server is already running, just re-open `http://127.0.0.1:7777/roadmap-board.html`.
-The board auto-refreshes; you never need to reload it after a JSON edit.
+If the router is already running, just re-open
+`http://127.0.0.1:7777/roadmap-board.html` (or use the `/roadmap` command). The
+board auto-refreshes; you never reload it after a `gh` change — the next 2s poll
+picks it up.
