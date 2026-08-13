@@ -14,7 +14,9 @@ is_router() { curl -sf -m 1 http://127.0.0.1:7777/healthz 2>/dev/null | grep -q 
 if is_router; then
   echo "already up -> $url"
 else
-  lsof -ti:7777 | xargs kill -9 2>/dev/null   # reclaim from a wrong/wedged server
+  # reclaim by process name — NOT `lsof -ti:7777 | kill`, which also matches the
+  # Claude app's client socket on :7777 and would kill/disrupt the app itself.
+  pkill -9 -f 'vibemap_router.py|github_companion.py' 2>/dev/null
   sleep 1
   nohup python3 vibemap_router.py >/tmp/vibemap-router.log 2>&1 &
   sleep 2

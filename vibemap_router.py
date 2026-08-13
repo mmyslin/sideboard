@@ -103,6 +103,7 @@ class Project:
         self.github = os.path.exists(self.meta_path)
         self.repo = self._detect_repo() if self.github else None
         self.issues = []
+        self.synced_at = None      # stamped on each sync; keeps updated_at stable between syncs (#42)
         self.lock = threading.RLock()
 
     def _detect_repo(self):
@@ -183,6 +184,7 @@ class Project:
             self.issues = json.loads(self._gh("issue", "list", "--state", "all", "--limit", "1000",
                                               "--json", "number,title,body,state,labels"))
             self._save_meta(self._reconcile(self.issues, self._load_meta()))
+            self.synced_at = _now()
 
     def board(self):
         with self.lock:
@@ -209,7 +211,9 @@ class Project:
                               "status": "done" if closed else meta["status"].get(n, "backlog"),
                               "labels": [{"name": l["name"], "colorIndex": meta["tag_colors"].get(l["name"])}
                                          for l in i.get("labels", [])]})
-            return {"updated_at": _now(), "project": self.title, "mode": "github",
+            # updated_at is the last SYNC time, not now — so the polled payload is byte-identical
+            # between syncs and the board doesn't re-render (and reset scroll) every poll (#42)
+            return {"updated_at": self.synced_at or _now(), "project": self.title, "mode": "github",
                     "board_version": bv, "items": items}
 
     # -- writes (github mode; local mode is read-only) ------------------------
