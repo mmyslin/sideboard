@@ -49,10 +49,34 @@
     border-bottom: 1px solid var(--border);
     background: var(--panel);
   }
-  header h1 {
-    font-size: 11.5px; margin: 0; font-weight: 700;
-    text-transform: uppercase; letter-spacing: .09em;
+  .switcher { position: relative; display: flex; align-items: center; gap: 9px; }
+  .sw-label { color: var(--muted); font-size: 9.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
+  .proj-btn {
+    display: inline-flex; align-items: center; gap: 8px; font-family: inherit;
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 3px 8px 3px 10px; font-size: 12px; font-weight: 700; line-height: 1.5;
+    cursor: pointer; letter-spacing: .01em;
   }
+  .proj-btn:hover { background: color-mix(in srgb, var(--panel-2) 82%, var(--text) 10%); }
+  .proj-btn .caret { color: var(--muted); flex: none; transition: transform .12s ease; }
+  .proj-btn[aria-expanded="true"] .caret { transform: rotate(180deg); }
+  .proj-menu {
+    position: absolute; top: calc(100% + 5px); left: 0; z-index: 60; min-width: 190px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 9px;
+    padding: 4px; box-shadow: 0 10px 30px rgba(0,0,0,.28);
+    max-height: 62vh; overflow-y: auto;
+  }
+  .proj-item {
+    display: flex; align-items: center; gap: 7px; padding: 6px 8px; border-radius: 6px;
+    cursor: pointer; font-size: 12px; color: var(--text); white-space: nowrap;
+  }
+  .proj-item:hover { background: var(--panel-2); }
+  .proj-item .check { flex: none; width: 13px; height: 13px; color: var(--c-backlog); visibility: hidden; }
+  .proj-item.sel .check { visibility: visible; }
+  .proj-item.sel { font-weight: 700; }
+  .proj-item.auto { border-bottom: 1px solid var(--border); border-radius: 6px 6px 0 0; margin-bottom: 3px; padding-bottom: 7px; }
+  .proj-item .sub { color: var(--muted); font-weight: 400; font-size: 10.5px; margin-left: 2px; }
   header .meta { color: var(--muted); font-size: 9.5px; letter-spacing: .04em; margin-left: auto; display: flex; align-items: center; gap: 6px; text-transform: uppercase; }
   .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--c-done); box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--c-done) 22%, transparent); }
   .dot.stale { background: var(--c-next); box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--c-next) 22%, transparent); }
@@ -244,7 +268,14 @@
 </head>
 <body>
   <header>
-    <h1 id="project">Roadmap</h1>
+    <div class="switcher">
+      <span class="sw-label">Project</span>
+      <button id="proj-btn" class="proj-btn" type="button" aria-haspopup="true" aria-expanded="false">
+        <span id="project">Roadmap</span>
+        <svg class="caret" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M4 6.5L8 10l4-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div id="proj-menu" class="proj-menu" role="menu" hidden></div>
+    </div>
     <div class="meta">
       <span id="status">connecting…</span>
       <span class="dot" id="dot"></span>
@@ -283,6 +314,10 @@ function tagColor(name) {
 }
 
 let lastRaw = "";
+// Manual project pin from the switcher. null = auto-follow the active project.
+// Kept in the URL (?project=<id>) so each pane is independent — localStorage is
+// shared across same-origin panes and would switch them all together. (#43)
+let pinnedId = new URLSearchParams(location.search).get("project") || null;
 const expanded = new Set();   // item ids whose description is expanded (persists across re-renders)
 const grow = {};              // per-lane flex-grow, set by dragging resizers (persists across re-renders)
 
@@ -539,12 +574,13 @@ function setStatus(state, data) {
 
 async function poll() {
   try {
-    const res = await fetch("roadmap.json?_=" + Date.now(), { cache: "no-store" });
+    const pinQ = pinnedId ? "&project=" + encodeURIComponent(pinnedId) : "";
+    const res = await fetch("roadmap.json?_=" + Date.now() + pinQ, { cache: "no-store" });
     if (!res.ok) throw new Error(res.status);
     const raw = await res.text();
     const data = JSON.parse(raw);
     if (window.__BV && data.board_version && data.board_version !== window.__BV) {
-      location.replace(location.pathname + "?_bv=" + data.board_version); return;   // stale HTML -> reload fresh
+      location.replace(location.pathname + "?_bv=" + data.board_version + pinQ); return;   // stale HTML -> reload fresh, keep the pin
     }
     // re-render only when the CONTENT changes — ignore updated_at, which the
     // router re-stamps every sync (~45s) and would otherwise force a needless
@@ -689,6 +725,42 @@ document.getElementById("board").addEventListener("click", (e) => {
     }).then(r => { if (!r.ok) throw new Error(r.status); })
       .catch(() => toast("Move not saved — is the companion running?"));
   });
+})();
+
+// ---- project switcher dropdown (#43): instant, client-side, no model ----------
+(function switcher() {
+  const btn = document.getElementById("proj-btn");
+  const menu = document.getElementById("proj-menu");
+  if (!btn || !menu) return;
+  const CHECK = '<svg class="check" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.4l3 3 6-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  let projects = [];
+
+  function draw() {
+    const rows = [`<div class="proj-item auto${pinnedId ? "" : " sel"}" data-id="">${CHECK}<span>Auto <span class="sub">follow active</span></span></div>`];
+    for (const p of projects) {
+      rows.push(`<div class="proj-item${pinnedId === p.id ? " sel" : ""}" data-id="${esc(p.id)}">${CHECK}<span>${esc(p.name)}</span></div>`);
+    }
+    menu.innerHTML = rows.join("");
+  }
+  async function open() {
+    try { projects = ((await (await fetch("projects?_=" + Date.now(), { cache: "no-store" })).json()).projects) || []; }
+    catch { projects = []; }
+    draw();
+    menu.hidden = false; btn.setAttribute("aria-expanded", "true");
+  }
+  function close() { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); }
+
+  btn.addEventListener("click", e => { e.stopPropagation(); menu.hidden ? open() : close(); });
+  menu.addEventListener("click", e => {
+    const item = e.target.closest(".proj-item"); if (!item) return;
+    pinnedId = item.dataset.id || null;
+    const u = new URL(location.href);
+    pinnedId ? u.searchParams.set("project", pinnedId) : u.searchParams.delete("project");
+    history.replaceState(null, "", u);            // per-pane, survives reloads
+    close(); lastRaw = ""; poll();                // instant switch — re-fetch + re-render
+  });
+  document.addEventListener("click", () => { if (!menu.hidden) close(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") close(); });
 })();
 
 poll();

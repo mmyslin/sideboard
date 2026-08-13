@@ -14,7 +14,7 @@ and legacy local-file mode (roadmap.json, served read-only).
 
   python3 vibemap_router.py     # serve :7777, follow the active project
 """
-import json, os, re, sys, shutil, subprocess, threading, time, datetime, http.server
+import json, os, re, sys, shutil, subprocess, threading, time, datetime, http.server, urllib.parse
 
 HOME = os.path.expanduser("~")
 ROUTER_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -91,6 +91,28 @@ def resolve_dir(title):
         _save_registry(reg)
         return best
     return None
+
+
+def project_name(d):
+    """Display name for a project dir: its registered session title, else the dir name."""
+    for title, path in _load_registry().items():
+        if path == d:
+            return title
+    return os.path.basename(d)
+
+
+def project_by_id(pid):
+    """Resolve a dropdown project id (dir basename) to a directory."""
+    d = os.path.join(PROJECTS_ROOT, pid)
+    return d if os.path.isdir(d) else None
+
+
+def list_projects():
+    """All VibeMap projects under PROJECTS_ROOT, for the board's switcher dropdown."""
+    active = STATE["active"]
+    return [{"id": os.path.basename(d), "name": project_name(d),
+             "active": bool(active) and active.path == d}
+            for d in _candidate_dirs()]
 
 
 # ---- a single project ------------------------------------------------------
@@ -312,18 +334,28 @@ class Handler(http.server.BaseHTTPRequestHandler):
             html = open(BOARD_HTML, encoding="utf-8").read().replace(
                 "</head>", f'<script>window.__BV="{v}";</script>\n</head>', 1)
             return self._send(200, html, "text/html; charset=utf-8")
+        if path == "/projects":
+            return self._send(200, json.dumps({"projects": list_projects()}))
         if path == "/roadmap.json":
-            p = STATE["active"]
-            if p is None:
-                board = {"updated_at": _now(), "project": None, "items": [],
-                         "board_version": str(int(os.path.getmtime(BOARD_HTML)))}
-            else:
-                try:
+            pid = (urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("project") or [None])[0]
+            empty = {"updated_at": _now(), "project": None, "items": [],
+                     "board_version": str(int(os.path.getmtime(BOARD_HTML)))}
+            try:
+                if pid:                                    # pinned view of a specific project
+                    d = project_by_id(pid)
+                    if not d:
+                        return self._send(200, json.dumps(empty))
+                    p = get_project(d)
+                    p.title = project_name(d)
+                    if p.github and not p.issues:
+                        _safe_sync(p)                      # blocking first load so it shows right away
                     board = p.board()
-                except Exception as e:
-                    print(f"[router] board error ({p.path}): {e}", file=sys.stderr, flush=True)
-                    board = {"updated_at": _now(), "project": p.title, "items": [],
-                             "board_version": str(int(os.path.getmtime(BOARD_HTML)))}
+                else:                                      # auto: follow the active project
+                    p = STATE["active"]
+                    board = p.board() if p else empty
+            except Exception as e:
+                print(f"[router] board error (project={pid}): {e}", file=sys.stderr, flush=True)
+                board = empty
             return self._send(200, json.dumps(board, ensure_ascii=False))
         self._send(404, "{}")
 
@@ -358,8 +390,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 def sync_loop():
     while True:
         time.sleep(SYNC_SECONDS)
-        p = STATE["active"]
-        if p:
+        for p in list(CACHE.values()):     # keep the active project AND any pinned/viewed one fresh
             _safe_sync(p)
 
 
