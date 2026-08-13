@@ -459,6 +459,7 @@ function copyText(text) {
 
 function render(data) {
   document.getElementById("project").textContent = data.project || "Roadmap";
+  document.title = data.project ? data.project + " · Roadmap" : "Roadmap";   // per-project tab title (#37)
   const board = document.getElementById("board");
   const items = Array.isArray(data.items) ? data.items : [];
   board.innerHTML = "";
