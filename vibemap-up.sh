@@ -17,8 +17,7 @@ else
   # reclaim by process name — NOT `lsof -ti:7777 | kill`, which also matches the
   # Claude app's client socket on :7777 and would kill/disrupt the app itself.
   pkill -9 -f 'vibemap_router.py|github_companion.py' 2>/dev/null
-  sleep 1
   nohup python3 vibemap_router.py >/tmp/vibemap-router.log 2>&1 &
-  sleep 2
+  for _ in $(seq 1 40); do is_router && break; sleep 0.05; done   # return as soon as ready (~2s cap), not a fixed 3s
   is_router && echo "started -> $url" || echo "started (warming up) -> $url"
 fi
