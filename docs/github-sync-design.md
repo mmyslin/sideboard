@@ -142,6 +142,31 @@ default omissions), so most changes need no migration at all. Reserve real
 `MIGRATIONS` entries for the rare unavoidable structural change (e.g. the
 local-file→sidecar move, or v0→v1 which added `tag_colors`/`next_color`).
 
+## Multi-project routing (#35)
+
+Running a companion per project made them fight over :7777 (wrong-project /
+wedged-port confusion). Replaced by **one router** (`vibemap_router.py`) that
+serves whichever project is *active*.
+
+- **The only project signal is the session TITLE.** In this Claude Code setup
+  every session runs from `$HOME`, so the hook payload's `cwd` is always `$HOME`
+  and `CLAUDE_PROJECT_DIR` is unset — measured via a probe hook. `session_title`
+  ("Sourcer", "VibeMap", "Flight price tracker") is the only discriminator, and
+  it rides on every `UserPromptSubmit` + on `SessionStart source=resume`
+  (`source=startup` carries no title — ignored).
+- **Flow:** a global hook `vibemap-active.sh` POSTs the title to `POST /active`;
+  the router maps title→dir (`~/.claude/vibemap-projects.json`, seeded by token
+  overlap with `~/Documents/Projects/*`, user-editable), switches the active
+  Project, and serves its board. `/healthz` identifies the router so
+  `vibemap-up.sh` can reclaim the port from a stale server.
+- **Handles both modes:** github projects (issues + sidecar) and legacy
+  local-file projects (`roadmap.json`, served read-only).
+- **Ceiling on "auto-switch":** a hook can't drive the preview pane, and the
+  pane is **per-session**, so each project's pane is opened once (`/roadmap`).
+  After that, switching projects (send a message → title fires) makes each
+  project's pane follow the active project. Switch lands on the first *message*,
+  not the bare sidebar click.
+
 ## Phasing
 
 1. **Read-only mirror** — companion syncs issues → `roadmap.json`

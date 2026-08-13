@@ -14,15 +14,16 @@
     "27": "backlog",
     "28": "backlog",
     "29": "backlog",
-    "31": "in_progress"
+    "31": "in_progress",
+    "35": "backlog"
   },
   "order": [
     "8",
     "9",
     "11",
     "12",
-    "14",
     "22",
+    "14",
     "26",
     "27",
     "29",
@@ -47,8 +48,14 @@
     "21",
     "23",
     "24",
-    "30"
+    "30",
+    "34",
+    "35"
   ],
-  "next_color": 0,
-  "tag_colors": {}
+  "next_color": 3,
+  "tag_colors": {
+    "good first issue": 0,
+    "recommendations": 2,
+    "ui": 1
+  }
 }

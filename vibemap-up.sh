@@ -1,12 +1,22 @@
 #!/usr/bin/env bash
-# Ensure the VibeMap GitHub companion is serving the board; print its URL.
-# Safe to run repeatedly. Started detached so it survives the terminal closing.
+# Ensure the VibeMap ROUTER is serving the board on :7777; print its URL.
+#
+# The router follows the ACTIVE project (set by the SessionStart/UserPromptSubmit
+# hook -> vibemap-active.sh), so the pinned pane follows whatever project you're
+# in. Safe to run repeatedly; started detached. If :7777 is held by something
+# that ISN'T the router (a stale single-project companion, or a wedged process),
+# reclaim the port and start the router — this is the #35 "wrong server" fix.
 url="http://127.0.0.1:7777/roadmap-board.html"
 cd "$(dirname "$0")" || exit 1
-if curl -sf -o /dev/null --max-time 1 "$url" 2>/dev/null; then
+
+is_router() { curl -sf -m 1 http://127.0.0.1:7777/healthz 2>/dev/null | grep -q '"router": *true'; }
+
+if is_router; then
   echo "already up -> $url"
 else
-  nohup python3 github_companion.py >/tmp/vibemap-companion.log 2>&1 &
+  lsof -ti:7777 | xargs kill -9 2>/dev/null   # reclaim from a wrong/wedged server
+  sleep 1
+  nohup python3 vibemap_router.py >/tmp/vibemap-router.log 2>&1 &
   sleep 2
-  echo "started -> $url"
+  is_router && echo "started -> $url" || echo "started (warming up) -> $url"
 fi
