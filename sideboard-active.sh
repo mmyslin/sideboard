@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VibeMap activity hook — tell the router which project is active.
+# Sideboard activity hook — tell the router which project is active.
 #
 # Wired to Claude Code's SessionStart + UserPromptSubmit hooks. Reads the hook
 # JSON on stdin, extracts the session TITLE (the only reliable project signal in
@@ -27,7 +27,7 @@ post() {
 }
 
 if ! post; then
-  nohup python3 "$HERE/vibemap_router.py" >/tmp/vibemap-router.log 2>&1 &
+  nohup python3 "$HERE/sideboard_router.py" >/tmp/sideboard-router.log 2>&1 &
   sleep 1
   post
 fi

@@ -1,9 +1,9 @@
 ---
-description: Open the VibeMap roadmap board in the preview pane
+description: Open the Sideboard roadmap board in the preview pane
 model: haiku
 effort: low
 ---
-Open the VibeMap roadmap board. This is a TRIVIAL one-step task — do not think,
+Open the Sideboard roadmap board. This is a TRIVIAL one-step task — do not think,
 plan, analyze, or deliberate. The router is already running.
 
 REUSE the existing pane tab instead of opening a new one (a new tab is slow to

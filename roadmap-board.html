@@ -361,7 +361,7 @@ function sendCardToClaude(card) {
   const notes = (card.querySelector(".notes")?.textContent || "").trim();
   if (!title) return;
   // Templated, editable prompt — paste into the Claude prompt, tweak, then send.
-  let text = `Let's work on this VibeMap roadmap item: "${title}".`;
+  let text = `Let's work on this Sideboard roadmap item: "${title}".`;
   if (notes) text += `\n\nNotes: ${notes}`;
   text += `\n\nMove it to In Progress and start implementing.`;
   const bridge = typeof window.sendPrompt === "function" ? window.sendPrompt

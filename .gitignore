@@ -1,5 +1,5 @@
 .DS_Store
 roadmap.json
-.vibemap/*.bak
+.sideboard/*.bak
 __pycache__/
 *.pyc

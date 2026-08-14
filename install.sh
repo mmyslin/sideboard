@@ -1,27 +1,31 @@
 #!/usr/bin/env bash
-# Install VibeMap for Claude Code: the board renderer, the multi-project router,
-# the /vibemap skill, and the global activity hook that makes the preview pane
+# Install Sideboard for Claude Code: the board renderer, the multi-project router,
+# the /sideboard skill, and the global activity hook that makes the preview pane
 # follow whatever project you're working in (#35, #36). Re-run any time to update.
 set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEST="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}/vibemap"
+DEST="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}/sideboard"
 SETTINGS="${CLAUDE_SETTINGS:-$HOME/.claude/settings.json}"
+
+# One-time cleanup: remove the pre-rename VibeMap install so it doesn't linger
+# beside the new one (the stale hook is also stripped from settings.json below).
+rm -rf "${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}/vibemap"
 
 mkdir -p "$DEST"
 cp "$SRC/skill/SKILL.md"       "$DEST/SKILL.md"
 cp "$SRC/roadmap-board.html"   "$DEST/roadmap-board.html"
-cp "$SRC/vibemap_router.py"    "$DEST/vibemap_router.py"
-cp "$SRC/vibemap-active.sh"    "$DEST/vibemap-active.sh"
-cp "$SRC/vibemap-up.sh"        "$DEST/vibemap-up.sh"
-chmod +x "$DEST/vibemap-active.sh" "$DEST/vibemap-up.sh" "$DEST/vibemap_router.py"
-echo "✅ Installed VibeMap files to: $DEST"
+cp "$SRC/sideboard_router.py"    "$DEST/sideboard_router.py"
+cp "$SRC/sideboard-active.sh"    "$DEST/sideboard-active.sh"
+cp "$SRC/sideboard-up.sh"        "$DEST/sideboard-up.sh"
+chmod +x "$DEST/sideboard-active.sh" "$DEST/sideboard-up.sh" "$DEST/sideboard_router.py"
+echo "✅ Installed Sideboard files to: $DEST"
 
 # Merge the SessionStart + UserPromptSubmit hooks into settings.json, without
-# clobbering existing keys/hooks. Idempotent: re-running replaces only VibeMap's
+# clobbering existing keys/hooks. Idempotent: re-running replaces only Sideboard's
 # own hook groups (so a changed install path is picked up cleanly).
-HOOK_CMD="$DEST/vibemap-active.sh"
-[ -f "$SETTINGS" ] && cp "$SETTINGS" "$SETTINGS.vibemap.bak"
+HOOK_CMD="$DEST/sideboard-active.sh"
+[ -f "$SETTINGS" ] && cp "$SETTINGS" "$SETTINGS.sideboard.bak"
 python3 - "$SETTINGS" "$HOOK_CMD" <<'PY'
 import json, os, sys
 settings_path, cmd = sys.argv[1], sys.argv[2]
@@ -34,8 +38,12 @@ except Exception as e:
     sys.exit(f"ERROR: {settings_path} is not valid JSON; leaving it untouched ({e}).")
 
 def is_ours(group):
+    # matches our current hook AND the legacy vibemap-active.sh, so re-running
+    # after the rename cleanly replaces the old group instead of duplicating it.
     hs = group.get("hooks", [])
-    return bool(hs) and all("vibemap-active.sh" in h.get("command", "") for h in hs)
+    return bool(hs) and all(
+        ("sideboard-active.sh" in h.get("command", "") or "vibemap-active.sh" in h.get("command", ""))
+        for h in hs)
 
 hooks = s.setdefault("hooks", {})
 for event in ("SessionStart", "UserPromptSubmit"):
@@ -55,9 +63,9 @@ cat <<EOF
 Next:
   • Start a NEW Claude Code session so the updated settings load.
   • In each project, open the board once — point the preview pane at
-    http://127.0.0.1:7777/roadmap-board.html (e.g. run \`$DEST/vibemap-up.sh\`
+    http://127.0.0.1:7777/roadmap-board.html (e.g. run \`$DEST/sideboard-up.sh\`
     first, or use the /roadmap command if you have it).
   • Switch projects and send a message; each project's pane follows along.
-  • Title→directory map lives in ~/.claude/vibemap-projects.json (auto-seeded
-    from ~/Documents/Projects; edit it to override or set VIBEMAP_PROJECTS_ROOT).
+  • Title→directory map lives in ~/.claude/sideboard-projects.json (auto-seeded
+    from ~/Documents/Projects; edit it to override or set SIDEBOARD_PROJECTS_ROOT).
 EOF

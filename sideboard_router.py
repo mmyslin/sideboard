@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""VibeMap router — one always-on server that follows the ACTIVE project.
+"""Sideboard router — one always-on server that follows the ACTIVE project.
 
 Why a router (see docs/github-sync-design.md, #35): in this Claude Code setup
 every session runs from $HOME, so a hook's payload can't tell projects apart by
@@ -10,23 +10,23 @@ board. The preview pane is pinned to :7777 once; its content then follows
 whichever project you're working in — no per-project companions, no port fights.
 
 GitHub mode only: a project is a git repo whose roadmap lives in GitHub Issues,
-with a committed `.vibemap/meta.json` sidecar holding the swimlane split, card
+with a committed `.sideboard/meta.json` sidecar holding the swimlane split, card
 order, and per-tag colors. Discovery keys off that sidecar; the router rebuilds
 the board by reconciling the sidecar against `gh issue list`.
 
-  python3 vibemap_router.py     # serve :7777, follow the active project
+  python3 sideboard_router.py     # serve :7777, follow the active project
 """
 import json, os, re, sys, shutil, subprocess, threading, time, datetime, http.server, urllib.parse
 
 HOME = os.path.expanduser("~")
 ROUTER_DIR = os.path.dirname(os.path.abspath(__file__))
 BOARD_HTML = os.path.join(ROUTER_DIR, "roadmap-board.html")
-REGISTRY = os.path.join(HOME, ".claude", "vibemap-projects.json")
+REGISTRY = os.path.join(HOME, ".claude", "sideboard-projects.json")
 PROJECTS_ROOT = os.path.abspath(os.environ.get(
-    "VIBEMAP_PROJECTS_ROOT", os.path.join(HOME, "Documents", "Projects")))
-PORT = int(os.environ.get("VIBEMAP_PORT", "7777"))
-SYNC_SECONDS = int(os.environ.get("VIBEMAP_SYNC_SECONDS", "45"))
-SCHEMA = 1   # .vibemap/meta.json schema version (migrated forward on load)
+    "SIDEBOARD_PROJECTS_ROOT", os.path.join(HOME, "Documents", "Projects")))
+PORT = int(os.environ.get("SIDEBOARD_PORT", "7777"))
+SYNC_SECONDS = int(os.environ.get("SIDEBOARD_SYNC_SECONDS", "45"))
+SCHEMA = 1   # .sideboard/meta.json schema version (migrated forward on load)
 
 LOCK = threading.RLock()
 STATE = {"active": None}     # active Project or None
@@ -54,12 +54,24 @@ def _save_registry(reg):
     json.dump(reg, open(REGISTRY, "w"), indent=2)
 
 
+def _migrate_registry():
+    """One-time: carry the legacy vibemap-projects.json to the new filename."""
+    old = os.path.join(HOME, ".claude", "vibemap-projects.json")
+    if os.path.exists(old) and not os.path.exists(REGISTRY):
+        try:
+            os.rename(old, REGISTRY)
+            print(f"[sideboard] migrated registry {old} -> {REGISTRY}", flush=True)
+        except OSError:
+            pass
+
+
 def _candidate_dirs():
     out = []
     try:
         for name in sorted(os.listdir(PROJECTS_ROOT)):
             d = os.path.join(PROJECTS_ROOT, name)
-            if os.path.isdir(d) and os.path.exists(os.path.join(d, ".vibemap", "meta.json")):
+            if os.path.isdir(d) and (os.path.exists(os.path.join(d, ".sideboard", "meta.json"))
+                                     or os.path.exists(os.path.join(d, ".vibemap", "meta.json"))):  # legacy, migrated on open
                 out.append(d)
     except FileNotFoundError:
         pass
@@ -109,7 +121,7 @@ def project_by_id(pid):
 
 
 def list_projects():
-    """All VibeMap projects under PROJECTS_ROOT, for the board's switcher dropdown."""
+    """All Sideboard projects under PROJECTS_ROOT, for the board's switcher dropdown."""
     active = STATE["active"]
     return [{"id": os.path.basename(d), "name": project_name(d),
              "active": bool(active) and active.path == d}
@@ -121,12 +133,20 @@ class Project:
     def __init__(self, path):
         self.path = path
         self.title = None
-        self.meta_path = os.path.join(path, ".vibemap", "meta.json")
+        self._migrate_sidecar(path)     # legacy .vibemap/ -> .sideboard/ (one-time, per project)
+        self.meta_path = os.path.join(path, ".sideboard", "meta.json")
         self.repo = self._detect_repo()
         self.issues = []
         self.synced_at = None      # stamped on each sync; keeps updated_at stable between syncs (#42)
         self.error = None          # human-readable reason the board can't load (no repo / gh auth / issues)
         self.lock = threading.RLock()
+
+    @staticmethod
+    def _migrate_sidecar(path):
+        old, new = os.path.join(path, ".vibemap"), os.path.join(path, ".sideboard")
+        if os.path.isdir(old) and not os.path.exists(new):
+            os.rename(old, new)
+            print(f"[sideboard] migrated sidecar {old} -> {new}", flush=True)
 
     def _detect_repo(self):
         try:
@@ -396,6 +416,7 @@ def sync_loop():
 
 
 if __name__ == "__main__":
+    _migrate_registry()
     threading.Thread(target=sync_loop, daemon=True).start()
     try:
         server = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Handler)

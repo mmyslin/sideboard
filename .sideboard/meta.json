@@ -14,7 +14,6 @@
     "27": "backlog",
     "28": "backlog",
     "29": "backlog",
-    "31": "in_progress",
     "35": "backlog",
     "36": "backlog",
     "37": "backlog",
@@ -24,7 +23,8 @@
     "41": "backlog",
     "42": "backlog",
     "43": "backlog",
-    "44": "backlog"
+    "44": "backlog",
+    "45": "backlog"
   },
   "order": [
     "8",
@@ -42,9 +42,10 @@
     "39",
     "41",
     "40",
+    "45",
     "43",
-    "31",
     "10",
+    "31",
     "25",
     "28",
     "15",

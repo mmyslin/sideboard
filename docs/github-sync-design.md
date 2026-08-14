@@ -1,4 +1,4 @@
-# VibeMap ↔ GitHub Issues — design (#15)
+# Sideboard ↔ GitHub Issues — design (#15)
 
 ## Decision
 
@@ -21,7 +21,7 @@ mode only; a repo is required (that's fine / desirable).
 Keeping `done` = closed (not in the sidecar) means each concept lives in exactly
 one place — no dual-sourced "done".
 
-### Sidecar — `.vibemap/meta.json` (committed; the durable board layout)
+### Sidecar — `.sideboard/meta.json` (committed; the durable board layout)
 ```json
 {
   "schema": 1,                                         // shape version (see below)
@@ -53,7 +53,7 @@ GitHub Issues  ──gh──►  Companion  ──writes──►  roadmap.json
    ▲                    (serves board,          (generated)            (static page)
    └──── gh writes ──── merges, syncs) ◄──POST writes── Board controls
                               │
-                        .vibemap/meta.json (sidecar)
+                        .sideboard/meta.json (sidecar)
 ```
 
 The companion **replaces `python -m http.server`**: it serves the board's static
@@ -110,13 +110,13 @@ so GitHub only sees meaningful changes — this is what keeps issue-tracker nois
 ## Migration from today's roadmap.json
 
 One-time script: for each current item, `gh issue create --title <title> --body
-<notes>` (create done items then `gh issue close`); build `.vibemap/meta.json`
+<notes>` (create done items then `gh issue close`); build `.sideboard/meta.json`
 from current `status`/order; gitignore the generated `roadmap.json`; drop `seq`.
 Refs renumber to issue numbers (accepted as trivial).
 
 ## Schema versioning & upgrades (#34)
 
-VibeMap is vendored into consumer projects: they commit a copy of
+Sideboard is vendored into consumer projects: they commit a copy of
 `github_companion.py` + `roadmap-board.html` and **upgrade by re-copying those
 files** (a reviewable git diff; each project pins a known-good version). Two
 things version independently, with very different upgrade profiles:
@@ -124,7 +124,7 @@ things version independently, with very different upgrade profiles:
 - **The renderer** (`roadmap-board.html`) is stateless and disposable. Upgrade =
   overwrite. It stays a *tolerant reader*: ignore unknown fields, default missing
   ones — so an old board renders new data and a new board renders old data.
-- **The data** (`.vibemap/meta.json`) is precious, so its shape is **versioned**
+- **The data** (`.sideboard/meta.json`) is precious, so its shape is **versioned**
   with a `schema` integer.
 
 **Automatic migration.** `github_companion.py` carries a `SCHEMA` constant and a
@@ -145,20 +145,20 @@ local-file→sidecar move, or v0→v1 which added `tag_colors`/`next_color`).
 ## Multi-project routing (#35)
 
 Running a companion per project made them fight over :7777 (wrong-project /
-wedged-port confusion). Replaced by **one router** (`vibemap_router.py`) that
+wedged-port confusion). Replaced by **one router** (`sideboard_router.py`) that
 serves whichever project is *active*.
 
 - **The only project signal is the session TITLE.** In this Claude Code setup
   every session runs from `$HOME`, so the hook payload's `cwd` is always `$HOME`
   and `CLAUDE_PROJECT_DIR` is unset — measured via a probe hook. `session_title`
-  ("Sourcer", "VibeMap", "Flight price tracker") is the only discriminator, and
+  ("Sourcer", "Sideboard", "Flight price tracker") is the only discriminator, and
   it rides on every `UserPromptSubmit` + on `SessionStart source=resume`
   (`source=startup` carries no title — ignored).
-- **Flow:** a global hook `vibemap-active.sh` POSTs the title to `POST /active`;
-  the router maps title→dir (`~/.claude/vibemap-projects.json`, seeded by token
+- **Flow:** a global hook `sideboard-active.sh` POSTs the title to `POST /active`;
+  the router maps title→dir (`~/.claude/sideboard-projects.json`, seeded by token
   overlap with `~/Documents/Projects/*`, user-editable), switches the active
   Project, and serves its board. `/healthz` identifies the router so
-  `vibemap-up.sh` can reclaim the port from a stale server.
+  `sideboard-up.sh` can reclaim the port from a stale server.
 - **Handles both modes:** github projects (issues + sidecar) and legacy
   local-file projects (`roadmap.json`, served read-only).
 - **Ceiling on "auto-switch":** a hook can't drive the preview pane, and the
