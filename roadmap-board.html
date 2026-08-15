@@ -151,6 +151,12 @@
   }
   .col-head .bar { width: 7px; height: 7px; border-radius: 2px; flex: none; }
   .col-head .count { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+  /* Collapse a whole lane to just its header (#14). Click the header to toggle. */
+  .col-head { cursor: pointer; }
+  .col-head .chev { color: var(--muted); font-size: 8px; flex: none; transition: transform .12s ease; }
+  .col.collapsed .chev { transform: rotate(-90deg); }
+  .col.collapsed { flex: 0 0 auto !important; min-height: 0 !important; max-height: none !important; }
+  .col.collapsed .col-body { display: none; }
   .card {
     position: relative;
     background: var(--panel);
@@ -326,6 +332,7 @@ let lastRaw = "";
 // shared across same-origin panes and would switch them all together. (#43)
 let pinnedId = new URLSearchParams(location.search).get("project") || null;
 const expanded = new Set();   // item ids whose description is expanded (persists across re-renders)
+const collapsed = new Set();  // lane keys collapsed to just their header (#14; persists across re-renders)
 const grow = {};              // per-lane flex-grow, set by dragging resizers (persists across re-renders)
 
 function rel(ts) {
@@ -533,10 +540,11 @@ function render(data) {
     // In Progress usually holds 0-1 cards, so don't let it claim an equal
     // share of height by default — let CSS size it to ~one card (stacked view).
     // Any lane the user has dragged carries an explicit grow -> honor it as-is.
-    if (grow[col.key] != null) { el.style.flexGrow = grow[col.key]; el.classList.add("user-sized"); }
+    if (collapsed.has(col.key)) { el.classList.add("collapsed"); el.style.flexGrow = "0"; }   // #14
+    else if (grow[col.key] != null) { el.style.flexGrow = grow[col.key]; el.classList.add("user-sized"); }
     else if (col.key !== "in_progress") { el.style.flexGrow = 1; }
     const add = col.key === "backlog" ? `<button class="col-add" type="button" title="Add item" aria-label="Add item">+</button>` : "";
-    el.innerHTML = `<div class="col-head"><span class="bar" style="background:${col.color}"></span>${col.label}<span class="count">${inCol.length}</span>${add}</div><div class="col-body"></div>`;
+    el.innerHTML = `<div class="col-head"><span class="chev">▾</span><span class="bar" style="background:${col.color}"></span>${col.label}<span class="count">${inCol.length}</span>${add}</div><div class="col-body"></div>`;
     const body = el.querySelector(".col-body");
     if (inCol.length === 0) {
       body.insertAdjacentHTML("beforeend", `<div class="empty">—</div>`);
@@ -613,9 +621,22 @@ function toggleExpand(card) {
   card.classList.toggle("open");
 }
 
+// Collapse/expand a whole lane to just its header; state survives re-renders (#14).
+function toggleCollapse(col) {
+  if (!col) return;
+  const key = col.dataset.key;
+  const nowCollapsed = !collapsed.has(key);
+  if (nowCollapsed) collapsed.add(key); else collapsed.delete(key);
+  col.classList.toggle("collapsed", nowCollapsed);
+  col.style.flexGrow = nowCollapsed ? "0"
+    : (grow[key] != null ? grow[key] : (key === "in_progress" ? "" : 1));
+}
+
 // Click a card (or its expand button) to toggle its description.
 document.getElementById("board").addEventListener("click", (e) => {
   if (e.target.closest(".col-add")) { openEditor("create"); return; }
+  const head = e.target.closest(".col-head");
+  if (head) { toggleCollapse(head.parentElement); return; }   // #14: click header to collapse/expand
   const actionBtn = e.target.closest(".card-actions button");
   if (actionBtn) {
     e.stopPropagation();
