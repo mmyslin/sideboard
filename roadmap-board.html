@@ -153,8 +153,6 @@
   .col-head .count { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
   /* Collapse a whole lane to just its header (#14). Click the header to toggle. */
   .col-head { cursor: pointer; }
-  .col-head .chev { color: var(--muted); font-size: 8px; flex: none; transition: transform .12s ease; }
-  .col.collapsed .chev { transform: rotate(-90deg); }
   .col.collapsed { flex: 0 0 auto !important; min-height: 0 !important; max-height: none !important; }
   .col.collapsed .col-body { display: none; }
   .card {
@@ -544,7 +542,7 @@ function render(data) {
     else if (grow[col.key] != null) { el.style.flexGrow = grow[col.key]; el.classList.add("user-sized"); }
     else if (col.key !== "in_progress") { el.style.flexGrow = 1; }
     const add = col.key === "backlog" ? `<button class="col-add" type="button" title="Add item" aria-label="Add item">+</button>` : "";
-    el.innerHTML = `<div class="col-head"><span class="chev">▾</span><span class="bar" style="background:${col.color}"></span>${col.label}<span class="count">${inCol.length}</span>${add}</div><div class="col-body"></div>`;
+    el.innerHTML = `<div class="col-head"><span class="bar" style="background:${col.color}"></span>${col.label}<span class="count">${inCol.length}</span>${add}</div><div class="col-body"></div>`;
     const body = el.querySelector(".col-body");
     if (inCol.length === 0) {
       body.insertAdjacentHTML("beforeend", `<div class="empty">—</div>`);
