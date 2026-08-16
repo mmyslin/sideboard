@@ -127,14 +127,13 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    padding-left: 12px;      /* nudge cards right; left gutter houses sequence connectors */
-    padding-right: 12px;     /* symmetric with the left gutter */
+    padding: 12px;           /* symmetric gutter on all four sides; the left one houses sequence connectors */
     position: relative;      /* containing block for the connector overlay */
   }
   /* Sequence connectors: a light-gray square bracket in the gutter between
      consecutive members of a sequence (drawn from card offsets in JS). */
   .seq-links { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
-  .seq-links path { fill: none; stroke: var(--seq-link); stroke-width: 1.25px; stroke-linecap: round; stroke-linejoin: round; }
+  .seq-links path { fill: none; stroke: var(--seq-link); stroke-width: 1.1px; stroke-linecap: round; stroke-linejoin: round; }
   /* Drag handles on the borders between lanes (vertical when side-by-side, horizontal when stacked) */
   .resizer {
     flex: none;
@@ -638,6 +637,9 @@ function drawConnectors() {
   const seqs = (latestData && latestData.sequences) || [];
   const spineX = 4, tickX = 10.5, R = 3;   // R = corner radius where the spine meets the top/bottom ticks
   document.querySelectorAll(".col-body").forEach(body => {
+    if (body.closest(".col")?.dataset.key !== "backlog") {   // connectors only in Backlog
+      const old = body.querySelector("svg.seq-links"); if (old) old.remove(); return;
+    }
     const byRef = {};
     body.querySelectorAll(".card").forEach(c => { byRef[c.dataset.ref] = c; });
     let d = "";
