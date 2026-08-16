@@ -16,7 +16,7 @@ the board by reconciling the sidecar against `gh issue list`.
 
   python3 sideboard_router.py     # serve :7777, follow the active project
 """
-import json, os, re, sys, shutil, subprocess, threading, time, datetime, http.server, urllib.parse
+import json, os, re, sys, shutil, subprocess, threading, time, datetime, uuid, http.server, urllib.parse
 
 HOME = os.path.expanduser("~")
 ROUTER_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -26,7 +26,7 @@ PROJECTS_ROOT = os.path.abspath(os.environ.get(
     "SIDEBOARD_PROJECTS_ROOT", os.path.join(HOME, "Documents", "Projects")))
 PORT = int(os.environ.get("SIDEBOARD_PORT", "7777"))
 SYNC_SECONDS = int(os.environ.get("SIDEBOARD_SYNC_SECONDS", "45"))
-SCHEMA = 1   # .sideboard/meta.json schema version (migrated forward on load)
+SCHEMA = 2   # .sideboard/meta.json schema version (migrated forward on load); v2 added sequences (#47)
 
 LOCK = threading.RLock()
 STATE = {"active": None}     # active Project or None
@@ -35,6 +35,22 @@ CACHE = {}                   # dir -> Project (keeps fetched issues warm across 
 
 def _now():
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# ---- sequences (#47): ordered sets of >=2 issues, one LLM-titled chain per issue ----
+def _new_seq_id():
+    return "seq-" + uuid.uuid4().hex[:8]
+
+def _norm_sequences(raw):
+    """Coerce sidecar sequences to [{id, title, items:[str,...]}] with de-duped items."""
+    out = []
+    for s in raw or []:
+        if not isinstance(s, dict):
+            continue
+        items = list(dict.fromkeys(str(x) for x in (s.get("items") or [])))
+        out.append({"id": str(s.get("id") or _new_seq_id()),
+                    "title": str(s.get("title") or ""), "items": items})
+    return out
 
 
 # ---- session title -> project directory ------------------------------------
@@ -212,14 +228,17 @@ class Project:
             self.error = _PERM_MSG      # sidecar in ~/Documents blocked by macOS TCC (#46)
             m = {}
         return {"status": dict(m.get("status", {})), "order": [str(n) for n in m.get("order", [])],
-                "tag_colors": dict(m.get("tag_colors", {})), "next_color": m.get("next_color", 0)}
+                "tag_colors": dict(m.get("tag_colors", {})), "next_color": m.get("next_color", 0),
+                "sequences": _norm_sequences(m.get("sequences", []))}
 
     def _save_meta(self, meta):
         stable = {"schema": SCHEMA,
                   "status": {k: meta["status"][k] for k in sorted(meta["status"], key=int)},
                   "order": meta["order"],
                   "next_color": meta.get("next_color", 0),
-                  "tag_colors": {k: meta["tag_colors"][k] for k in sorted(meta.get("tag_colors", {}))}}
+                  "tag_colors": {k: meta["tag_colors"][k] for k in sorted(meta.get("tag_colors", {}))},
+                  "sequences": [{"id": s["id"], "title": s["title"], "items": [int(x) for x in s["items"]]}
+                                for s in meta.get("sequences", [])]}
         try:
             os.makedirs(os.path.dirname(self.meta_path), exist_ok=True)
             json.dump(stable, open(self.meta_path, "w"), indent=2)
@@ -242,10 +261,13 @@ class Project:
         if v < 1:                       # v0 -> v1: per-tag colors were added
             raw.setdefault("tag_colors", {})
             raw.setdefault("next_color", 0)
+        if v < 2:                       # v1 -> v2: sequences were added (#47)
+            raw.setdefault("sequences", [])
         self._save_meta({"status": raw.get("status", {}),
                          "order": [str(n) for n in raw.get("order", [])],
                          "tag_colors": raw.get("tag_colors", {}),
-                         "next_color": raw.get("next_color", 0)})
+                         "next_color": raw.get("next_color", 0),
+                         "sequences": _norm_sequences(raw.get("sequences", []))})
         print(f"[router] migrated {self.path} sidecar v{v} -> v{SCHEMA}", flush=True)
 
     def _reconcile(self, issues, meta):
@@ -266,7 +288,20 @@ class Project:
             if name not in tag_colors:
                 tag_colors[name] = next_color
                 next_color += 1
-        return {"status": status, "order": order, "tag_colors": tag_colors, "next_color": next_color}
+        # Sequences (#47): drop deleted issues, enforce one-sequence-per-issue,
+        # and auto-dissolve any chain that falls below 2 items. Done issues stay
+        # in the chain (they're the completed steps the ordering is about).
+        sequences, seen = [], set()
+        for s in meta.get("sequences", []):
+            items = []
+            for n in s["items"]:
+                if n in present and n not in seen:
+                    items.append(n); seen.add(n)
+            if len(items) >= 2:
+                sequences.append({"id": s.get("id") or _new_seq_id(),
+                                  "title": s.get("title", ""), "items": items})
+        return {"status": status, "order": order, "tag_colors": tag_colors,
+                "next_color": next_color, "sequences": sequences}
 
     def sync(self):
         """Re-fetch issues + reconcile the sidecar. Records a human-readable
@@ -305,6 +340,10 @@ class Project:
                         "mode": "github", "board_version": bv, "items": [], "error": self.error}
             meta = self._load_meta()
             by_num = {str(i["number"]): i for i in self.issues}
+            seq_by_item = {}                       # issue -> its sequence + position (#47)
+            for s in meta["sequences"]:
+                for pos, n in enumerate(s["items"]):
+                    seq_by_item[n] = {"id": s["id"], "title": s["title"], "pos": pos, "len": len(s["items"])}
             items = []
             for n in meta["order"]:
                 i = by_num.get(n)
@@ -315,11 +354,14 @@ class Project:
                               "notes": i.get("body") or "",
                               "status": "done" if closed else meta["status"].get(n, "backlog"),
                               "labels": [{"name": l["name"], "colorIndex": meta["tag_colors"].get(l["name"])}
-                                         for l in i.get("labels", [])]})
+                                         for l in i.get("labels", [])],
+                              "sequence": seq_by_item.get(n)})
             # updated_at is the last SYNC time, not now — so the polled payload is byte-identical
             # between syncs and the board doesn't re-render (and reset scroll) every poll (#42)
             return {"updated_at": self.synced_at or _now(), "project": self.title, "mode": "github",
-                    "board_version": bv, "items": items}
+                    "board_version": bv, "items": items,
+                    "sequences": [{"id": s["id"], "title": s["title"], "items": [int(x) for x in s["items"]]}
+                                  for s in meta["sequences"]]}
 
     # -- writes ---------------------------------------------------------------
     def apply_drop(self, number, status, order):
@@ -357,6 +399,70 @@ class Project:
         if remove:
             self._gh("issue", "edit", str(number), "--remove-label", remove)
         self.sync()
+
+    # -- sequence writes (#47): sidecar-only, no gh round-trip; board reads
+    #    _load_meta fresh each poll, so changes show up without a GitHub refetch.
+    def _present(self):
+        return {str(i["number"]) for i in self.issues}
+
+    def _write_sequences(self, mutate):
+        """Load meta, let mutate(sequences) change it in place, then reconcile+save."""
+        with self.lock:
+            meta = self._load_meta()
+            res = mutate(meta["sequences"])
+            self._save_meta(self._reconcile(self.issues, meta))
+        return res
+
+    def seq_create(self, items, title=""):
+        present = self._present()
+        items = [n for n in dict.fromkeys(str(x) for x in items) if n in present]
+        if len(items) < 2:                      # a sequence needs >=2 real issues
+            return None
+        sid = _new_seq_id()
+        def mut(seqs):
+            for s in seqs:                       # 0/1 invariant: pull these out of any other chain
+                s["items"] = [n for n in s["items"] if n not in items]
+            seqs.append({"id": sid, "title": str(title or ""), "items": items})
+            return sid
+        return self._write_sequences(mut)
+
+    def seq_update(self, sid, title=None, items=None):
+        present = self._present()
+        def mut(seqs):
+            s = next((x for x in seqs if x["id"] == sid), None)
+            if not s:
+                return False
+            if title is not None:
+                s["title"] = str(title)
+            if items is not None:                # reorder / set membership
+                newitems = [n for n in dict.fromkeys(str(x) for x in items) if n in present]
+                for other in seqs:
+                    if other is not s:
+                        other["items"] = [n for n in other["items"] if n not in newitems]
+                s["items"] = newitems            # if it drops below 2, reconcile dissolves it
+            return True
+        return self._write_sequences(mut)
+
+    def seq_dissolve(self, sid):
+        def mut(seqs):
+            n = len(seqs)
+            seqs[:] = [x for x in seqs if x["id"] != sid]
+            return len(seqs) != n
+        return self._write_sequences(mut)
+
+    def seq_move(self, number, sid):
+        """Move issue `number` into sequence `sid` (appended); a falsy sid just
+        removes it from whatever chain it's in. Enforces one-sequence-per-issue."""
+        n, present = str(number), self._present()
+        def mut(seqs):
+            for s in seqs:
+                s["items"] = [x for x in s["items"] if x != n]
+            if sid and n in present:
+                s = next((x for x in seqs if x["id"] == sid), None)
+                if s:
+                    s["items"].append(n)
+            return True
+        return self._write_sequences(mut)
 
 
 def get_project(path):
@@ -462,6 +568,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._send(200, json.dumps({"ok": True}))
             if path == "/api/label":
                 p.label(body["number"], body.get("add"), body.get("remove"))
+                return self._send(200, json.dumps({"ok": True}))
+            # -- sequences (#47) --
+            if path == "/api/seq/create":
+                sid = p.seq_create(body.get("items", []), body.get("title", ""))
+                return self._send(200 if sid else 400,
+                                  json.dumps({"ok": bool(sid), "id": sid} if sid
+                                             else {"ok": False, "error": "need >=2 existing issues"}))
+            if path == "/api/seq/update":
+                ok = p.seq_update(body["id"], body.get("title"), body.get("items"))
+                return self._send(200 if ok else 404, json.dumps({"ok": ok}))
+            if path == "/api/seq/dissolve":
+                ok = p.seq_dissolve(body["id"])
+                return self._send(200 if ok else 404, json.dumps({"ok": ok}))
+            if path == "/api/seq/move":
+                p.seq_move(body["number"], body.get("id"))
                 return self._send(200, json.dumps({"ok": True}))
             self._send(404, "{}")
         except Exception as e:
