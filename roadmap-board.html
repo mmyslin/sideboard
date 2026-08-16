@@ -252,6 +252,38 @@
     font-size: 11.5px; padding: 4px 12px; border-radius: 5px; cursor: pointer;
     border: 1px solid var(--accent); background: var(--accent); color: #fff;
   }
+  /* Sequence pill on cards + the sequence modal (#50) */
+  .card .seq-pill {
+    display: inline-flex; align-items: center; vertical-align: middle; margin-left: 5px;
+    padding: 2px 6px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--panel-2); color: var(--muted); cursor: pointer;
+  }
+  .card .seq-pill:hover { color: var(--text); border-color: var(--accent); }
+  .card .seq-pill svg { width: 15px; height: 9px; display: block; }
+  #card-editor .sq-box { width: min(94%, 380px); gap: 10px; }
+  #card-editor .sq-head { display: flex; align-items: center; gap: 8px; }
+  #card-editor .sq-title { flex: 1; font-weight: 600; }
+  #card-editor .sq-close {
+    flex: none; width: 22px; height: 22px; border-radius: 5px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--panel-2); color: var(--muted);
+    font-size: 15px; line-height: 1;
+  }
+  #card-editor .sq-close:hover { color: var(--text); }
+  #card-editor .sq-chain { display: flex; flex-direction: column; gap: 4px; }
+  #card-editor .sq-row {
+    display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px;
+    background: var(--panel-2); border: 1px solid var(--border); cursor: grab;
+  }
+  #card-editor .sq-row.dragging { opacity: .4; }
+  #card-editor .sq-row.done .sq-name { text-decoration: line-through; color: var(--muted); }
+  #card-editor .sq-grip { color: var(--muted); font-size: 11px; letter-spacing: -3px; padding-right: 3px; }
+  #card-editor .sq-pos { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; width: 11px; text-align: right; }
+  #card-editor .sq-ref { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  #card-editor .sq-name { flex: 1; font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #card-editor .sq-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  #card-editor .sq-dot.todo { background: var(--c-backlog); }
+  #card-editor .sq-dot.wip  { background: var(--c-progress); }
+  #card-editor .sq-dot.done { background: var(--c-done); }
 </style>
 </head>
 <body>
@@ -284,6 +316,9 @@ const ICON = {
   edit:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
   tag:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>',
 };
+// Chain-of-links glyph for the sequence pill (#50).
+const ICON_SEQ = '<svg viewBox="0 0 26 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><ellipse cx="6.5" cy="8" rx="4.6" ry="3.7"/><ellipse cx="13" cy="8" rx="4.6" ry="3.7"/><ellipse cx="19.5" cy="8" rx="4.6" ry="3.7"/></svg>';
+let latestData = null;   // most recent board payload, so the sequence modal can read titles/status/order
 
 function contrastText(hex) {
   hex = (hex || "808080").replace("#", "");
@@ -370,6 +405,91 @@ function openEditor(mode, data) {
   titleEl.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
   document.body.appendChild(m);
   titleEl.focus();
+}
+
+// -- sequences (#50): pill + modal (vertical chain, editable title, drag-reorder) --
+function seqPill(seq) {
+  const t = (seq.title ? seq.title + " — " : "") + `step ${seq.pos + 1} of ${seq.len}`;
+  return `<button type="button" class="seq-pill" data-seq="${esc(seq.id)}" title="${esc(t)}" aria-label="${esc(t)}">${ICON_SEQ}</button>`;
+}
+
+function apiPost(url, body) {
+  return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+    .then(r => { if (!r.ok) throw new Error(r.status); })
+    .catch(() => toast("Not saved — is the router running?"));
+}
+
+// Which row the dragged one should sit before, from the cursor Y (null = end).
+function rowAfter(container, y) {
+  let best = { off: -Infinity, el: null };
+  for (const row of container.querySelectorAll(".sq-row:not(.dragging)")) {
+    const box = row.getBoundingClientRect();
+    const off = y - box.top - box.height / 2;
+    if (off < 0 && off > best.off) best = { off, el: row };
+  }
+  return best.el;
+}
+
+function openSequence(seqId) {
+  const data = latestData;
+  if (!data) return;
+  const seq = (data.sequences || []).find(s => s.id === seqId);
+  if (!seq) return;
+  const byRef = {};
+  (data.items || []).forEach(it => { byRef[it.ref] = it; });
+  document.getElementById("card-editor")?.remove();
+  const m = document.createElement("div");
+  m.id = "card-editor";
+  m.innerHTML = `<div class="ce-box sq-box">
+      <div class="sq-head">
+        <input class="sq-title" type="text" placeholder="Sequence title" />
+        <button type="button" class="sq-close" aria-label="Close">×</button>
+      </div>
+      <div class="sq-chain"></div>
+    </div>`;
+  const titleEl = m.querySelector(".sq-title");
+  const chain = m.querySelector(".sq-chain");
+  titleEl.value = seq.title || "";
+  let order = seq.items.slice();
+  const drawChain = () => {
+    chain.innerHTML = order.map((ref, i) => {
+      const it = byRef[ref] || {};
+      const st = it.status === "done" ? "done" : it.status === "in_progress" ? "wip" : "todo";
+      return `<div class="sq-row${st === "done" ? " done" : ""}" draggable="true" data-ref="${ref}">
+        <span class="sq-grip" aria-hidden="true">⠿</span>
+        <span class="sq-pos">${i + 1}</span>
+        <span class="sq-ref">#${ref}</span>
+        <span class="sq-name">${esc(it.title || "(unknown)")}</span>
+        <span class="sq-dot ${st}"></span>
+      </div>`;
+    }).join("");
+  };
+  drawChain();
+  const close = () => m.remove();
+  m.addEventListener("mousedown", (e) => { if (e.target === m) close(); });
+  m.querySelector(".sq-close").addEventListener("click", close);
+  const saveTitle = () => apiPost("/api/seq/update", { id: seqId, title: titleEl.value.trim() });
+  titleEl.addEventListener("change", saveTitle);
+  titleEl.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); titleEl.blur(); } });
+  chain.addEventListener("dragstart", (e) => { const r = e.target.closest(".sq-row"); if (r) r.classList.add("dragging"); });
+  chain.addEventListener("dragend", (e) => { const r = e.target.closest(".sq-row"); if (r) r.classList.remove("dragging"); });
+  chain.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    const dragging = chain.querySelector(".sq-row.dragging");
+    if (!dragging) return;
+    const before = rowAfter(chain, e.clientY);
+    if (before == null) chain.appendChild(dragging);
+    else chain.insertBefore(dragging, before);
+  });
+  chain.addEventListener("drop", (e) => {
+    e.preventDefault();
+    const next = [...chain.querySelectorAll(".sq-row")].map(r => Number(r.dataset.ref));
+    if (next.join() === order.join()) return;   // no change
+    order = next;
+    drawChain();
+    apiPost("/api/seq/update", { id: seqId, items: order });
+  });
+  document.body.appendChild(m);
 }
 
 // Manage a card's tags -> POST /api/label (github mode; tags = GitHub labels).
@@ -478,7 +598,7 @@ function render(data) {
             <span class="title">${esc(it.title)}</span>${(it.labels || []).map(l => {
               const c = l.colorIndex != null ? TAG_PALETTE[l.colorIndex % TAG_PALETTE.length] : tagColor(l.name);
               return `<span class="tag" style="background:${c};color:${contrastText(c)}">${esc(l.name)}</span>`;
-            }).join("")}
+            }).join("")}${it.sequence ? seqPill(it.sequence) : ""}
           </div>
           ${hasNotes ? `<div class="notes">${esc(it.notes)}</div>` : ""}
           ${it.ref != null ? `<div class="ref"${it.updated_at ? ` title="updated ${rel(it.updated_at)}"` : ""}>#${esc(it.ref)}</div>` : ""}
@@ -510,6 +630,7 @@ async function poll() {
     if (!res.ok) throw new Error(res.status);
     const raw = await res.text();
     const data = JSON.parse(raw);
+    latestData = data;   // keep fresh for the sequence modal (#50)
     if (window.__BV && data.board_version && data.board_version !== window.__BV) {
       location.replace(location.pathname + "?_bv=" + data.board_version + pinQ); return;   // stale HTML -> reload fresh, keep the pin
     }
@@ -547,6 +668,8 @@ function toggleCollapse(col) {
 // Click a card (or its expand button) to toggle its description.
 document.getElementById("board").addEventListener("click", (e) => {
   if (e.target.closest(".col-add")) { openEditor("create"); return; }
+  const pill = e.target.closest(".seq-pill");
+  if (pill) { e.stopPropagation(); openSequence(pill.dataset.seq); return; }   // #50
   const head = e.target.closest(".col-head");
   if (head) { toggleCollapse(head.parentElement); return; }   // #14: click header to collapse/expand
   const actionBtn = e.target.closest(".card-actions button");
@@ -636,7 +759,7 @@ document.getElementById("board").addEventListener("click", (e) => {
 
   board.addEventListener("dragstart", (e) => {
     const card = e.target.closest(".card");
-    if (!card || e.target.closest(".card-actions")) { e.preventDefault(); return; }
+    if (!card || e.target.closest(".card-actions") || e.target.closest(".seq-pill")) { e.preventDefault(); return; }
     dragEl = card;
     card.classList.add("dragging");
     e.dataTransfer.effectAllowed = "move";
