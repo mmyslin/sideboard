@@ -143,6 +143,19 @@ def _is_perm_error(text):
 _PERM_MSG = ("macOS blocked this router from reading the project folder in "
              "~/Documents. Restart it: run ./sideboard-up.sh in the repo.")
 
+def access_ok():
+    """Can this process read the projects root? macOS TCC can deny a hook-launched
+    daemon access to ~/Documents; when it does, the launcher should relaunch the
+    router from a granted context instead of serving broken boards. Exposed on
+    /healthz and the /active response so the hook/up-script can self-heal (#46)."""
+    try:
+        os.listdir(PROJECTS_ROOT)
+    except PermissionError:
+        return False          # TCC denied ~/Documents to this process
+    except OSError:
+        pass                  # missing/other root — not a permission wall; don't trigger a relaunch
+    return True
+
 
 # ---- a single project ------------------------------------------------------
 class Project:
@@ -396,7 +409,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/healthz":
             p = STATE["active"]
-            return self._send(200, json.dumps({"router": True, "active": p.title if p else None}))
+            return self._send(200, json.dumps({"router": True, "active": p.title if p else None,
+                                                "access_ok": access_ok()}))
         if path in ("/", "/roadmap-board.html"):
             v = str(int(os.path.getmtime(BOARD_HTML)))
             html = open(BOARD_HTML, encoding="utf-8").read().replace(
@@ -434,7 +448,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if path == "/active":
                 p = set_active(body.get("session_title"))
                 return self._send(200, json.dumps({"ok": True, "project": p.title if p else None,
-                                                    "dir": p.path if p else None}))
+                                                    "dir": p.path if p else None, "access_ok": access_ok()}))
             p = STATE["active"]
             if p is None:
                 return self._send(409, json.dumps({"ok": False, "error": "no active project"}))
@@ -472,4 +486,5 @@ if __name__ == "__main__":
               file=sys.stderr, flush=True)
         sys.exit(0)
     print(f"[router] serving :{PORT}; following the active project (root: {PROJECTS_ROOT})", flush=True)
+    print(f"[router] ~/Documents access: {'ok' if access_ok() else 'DENIED (macOS TCC) — boards will show the restart hint (#46)'}", flush=True)
     server.serve_forever()

@@ -10,15 +10,36 @@
 url="http://127.0.0.1:7777/roadmap-board.html"
 cd "$(dirname "$0")" || exit 1
 
-is_router() { curl -sf -m 1 http://127.0.0.1:7777/healthz 2>/dev/null | grep -q '"router": *true'; }
-
-if is_router; then
-  echo "already up -> $url"
-else
+health()    { curl -sf -m 1 http://127.0.0.1:7777/healthz 2>/dev/null; }
+is_router() { printf '%s' "$1" | grep -q '"router": *true'; }
+access_ok() { printf '%s' "$1" | grep -q '"access_ok": *true'; }
+launch() {
   # reclaim by process name — NOT `lsof -ti:7777 | kill`, which also matches the
   # Claude app's client socket on :7777 and would kill/disrupt the app itself.
   pkill -9 -f 'sideboard_router.py|vibemap_router.py|github_companion.py' 2>/dev/null
   nohup python3 sideboard_router.py >/tmp/sideboard-router.log 2>&1 &
-  for _ in $(seq 1 40); do is_router && break; sleep 0.05; done   # return as soon as ready (~2s cap), not a fixed 3s
-  is_router && echo "started -> $url" || echo "started (warming up) -> $url"
+  date +%s >/tmp/sideboard-relaunch.stamp
+  for _ in $(seq 1 40); do is_router "$(health)" && break; sleep 0.05; done   # ready within ~2s
+}
+
+h="$(health)"
+if is_router "$h"; then
+  if access_ok "$h"; then
+    echo "already up -> $url"
+  else
+    # Up, but macOS is blocking its ~/Documents access (#46). Relaunch from this
+    # context, which normally holds the grant. Rate-limited to avoid a loop.
+    last=$(cat /tmp/sideboard-relaunch.stamp 2>/dev/null || echo 0)
+    if [ "$(( $(date +%s) - last ))" -ge 60 ]; then
+      echo "router up but has no ~/Documents access — relaunching (#46)"
+      launch
+      access_ok "$(health)" && echo "recovered -> $url" \
+        || echo "still no access — restart Claude, or grant it Files & Folders access -> $url"
+    else
+      echo "already up (no access; relaunched recently) -> $url"
+    fi
+  fi
+else
+  launch
+  is_router "$(health)" && echo "started -> $url" || echo "started (warming up) -> $url"
 fi
