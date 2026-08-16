@@ -128,6 +128,22 @@ def list_projects():
             for d in _candidate_dirs()]
 
 
+# ---- macOS TCC / permission resilience (#46) -------------------------------
+# gh/git need a readable working directory. ~/Documents is TCC-protected, so a
+# router cold-booted by a hook into a permission-poor context gets EPERM
+# ("operation not permitted" / "unable to read current working directory") for
+# every call made from the project dir. Run gh with an explicit `-R owner/repo`
+# from a cwd that is never sandboxed, so the API calls don't touch the project
+# folder at all; only one-time repo detection has to read it.
+SAFE_CWD = os.path.dirname(os.path.abspath(__file__))
+_PERM_MARKERS = ("operation not permitted", "unable to read current working directory")
+def _is_perm_error(text):
+    t = (text or "").lower()
+    return any(m in t for m in _PERM_MARKERS)
+_PERM_MSG = ("macOS blocked this router from reading the project folder in "
+             "~/Documents. Restart it: run ./sideboard-up.sh in the repo.")
+
+
 # ---- a single project ------------------------------------------------------
 class Project:
     def __init__(self, path):
@@ -135,10 +151,11 @@ class Project:
         self.title = None
         self._migrate_sidecar(path)     # legacy .vibemap/ -> .sideboard/ (one-time, per project)
         self.meta_path = os.path.join(path, ".sideboard", "meta.json")
+        self.error = None          # human-readable reason the board can't load (no repo / gh auth / issues)
+        self._detect_err = None    # set by _detect_repo when access was denied (EPERM); surfaced by sync (#46)
         self.repo = self._detect_repo()
         self.issues = []
         self.synced_at = None      # stamped on each sync; keeps updated_at stable between syncs (#42)
-        self.error = None          # human-readable reason the board can't load (no repo / gh auth / issues)
         self.lock = threading.RLock()
 
     @staticmethod
@@ -149,15 +166,28 @@ class Project:
             print(f"[sideboard] migrated sidecar {old} -> {new}", flush=True)
 
     def _detect_repo(self):
+        # The one call that must read the project dir — to learn owner/repo.
         try:
             r = subprocess.run(["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
                                cwd=self.path, text=True, capture_output=True, timeout=10)
-            return (r.stdout or "").strip() or None
-        except Exception:
+            slug = (r.stdout or "").strip()
+            if slug:
+                self._detect_err = None
+                return slug
+            if _is_perm_error(r.stderr):
+                self._detect_err = _PERM_MSG
+            return None
+        except Exception as e:
+            if _is_perm_error(str(e)):
+                self._detect_err = _PERM_MSG
             return None
 
     def _gh(self, *args):
-        return subprocess.run(["gh", *args], cwd=self.path, check=True, text=True, capture_output=True).stdout
+        # Run from a never-sandboxed cwd and target the repo explicitly, so the
+        # call never depends on ~/Documents being accessible to this process (#46).
+        extra = ["-R", self.repo] if self.repo else []
+        return subprocess.run(["gh", *args, *extra], cwd=SAFE_CWD,
+                              check=True, text=True, capture_output=True).stdout
 
     # -- sidecar (github mode) ------------------------------------------------
     def _load_meta(self):
@@ -165,23 +195,32 @@ class Project:
             m = json.load(open(self.meta_path))
         except FileNotFoundError:
             m = {}
+        except PermissionError:
+            self.error = _PERM_MSG      # sidecar in ~/Documents blocked by macOS TCC (#46)
+            m = {}
         return {"status": dict(m.get("status", {})), "order": [str(n) for n in m.get("order", [])],
                 "tag_colors": dict(m.get("tag_colors", {})), "next_color": m.get("next_color", 0)}
 
     def _save_meta(self, meta):
-        os.makedirs(os.path.dirname(self.meta_path), exist_ok=True)
         stable = {"schema": SCHEMA,
                   "status": {k: meta["status"][k] for k in sorted(meta["status"], key=int)},
                   "order": meta["order"],
                   "next_color": meta.get("next_color", 0),
                   "tag_colors": {k: meta["tag_colors"][k] for k in sorted(meta.get("tag_colors", {}))}}
-        json.dump(stable, open(self.meta_path, "w"), indent=2)
+        try:
+            os.makedirs(os.path.dirname(self.meta_path), exist_ok=True)
+            json.dump(stable, open(self.meta_path, "w"), indent=2)
+        except PermissionError:
+            self.error = _PERM_MSG      # sidecar in ~/Documents blocked by macOS TCC (#46)
 
     def migrate(self):
         """Upgrade an older sidecar to the current schema."""
         try:
             raw = json.load(open(self.meta_path))
         except FileNotFoundError:
+            return
+        except PermissionError:
+            self.error = _PERM_MSG      # sidecar in ~/Documents blocked by macOS TCC (#46)
             return
         v = int(raw.get("schema", 0))
         if v >= SCHEMA:
@@ -223,19 +262,27 @@ class Project:
         silently serving an empty board."""
         with self.lock:
             if not self.repo:
-                self.error = ("No GitHub repo detected here. Sideboard is GitHub-only: "
-                              "run it from a repo, and make sure `gh auth login` is done.")
+                self.repo = self._detect_repo()   # self-heal: retry detection each poll (#46)
+            if not self.repo:
+                self.error = self._detect_err or (
+                    "No GitHub repo detected here. Sideboard is GitHub-only: "
+                    "run it from a repo, and make sure `gh auth login` is done.")
                 return
             try:
-                self.issues = json.loads(self._gh("issue", "list", "--state", "all", "--limit", "1000",
-                                                  "--json", "number,title,body,state,labels"))
+                issues = json.loads(self._gh("issue", "list", "--state", "all", "--limit", "1000",
+                                             "--json", "number,title,body,state,labels"))
             except subprocess.CalledProcessError as e:
-                self.error = (f"Couldn't read GitHub Issues for {self.repo}: "
-                              f"{(e.stderr or '').strip() or 'is `gh` authenticated and are Issues enabled?'}")
+                stderr = (e.stderr or "").strip()
+                self.error = (_PERM_MSG if _is_perm_error(stderr) else
+                              f"Couldn't read GitHub Issues for {self.repo}: "
+                              f"{stderr or 'is `gh` authenticated and are Issues enabled?'}")
                 return
+            self.issues = issues
+            self.error = None                     # clear stale errors; the sidecar ops below may re-set it
             self._save_meta(self._reconcile(self.issues, self._load_meta()))
+            if self.error:                        # _load_meta/_save_meta hit a permission wall (#46)
+                return
             self.synced_at = _now()
-            self.error = None
 
     def board(self):
         with self.lock:
@@ -292,7 +339,7 @@ class Project:
 
     def label(self, number, add=None, remove=None):
         if add:
-            subprocess.run(["gh", "label", "create", add], cwd=self.path, capture_output=True, text=True)
+            subprocess.run(["gh", "label", "create", add, "-R", self.repo], cwd=SAFE_CWD, capture_output=True, text=True)
             self._gh("issue", "edit", str(number), "--add-label", add)
         if remove:
             self._gh("issue", "edit", str(number), "--remove-label", remove)
