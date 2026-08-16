@@ -53,6 +53,29 @@ def _norm_sequences(raw):
     return out
 
 
+def _group_sequences(order, sequences):
+    """Force each sequence's members to sit consecutively (in sequence order) so a
+    chain is never interrupted by unrelated issues. The block lands at the position
+    of the sequence's earliest current member; everything else keeps its order."""
+    pos = {n: i for i, n in enumerate(order)}
+    anchor_block, members = {}, set()
+    for s in sequences:
+        present = [n for n in s["items"] if n in pos]
+        if len(present) < 2:
+            continue
+        members.update(present)
+        anchor_block[min(pos[n] for n in present)] = present   # earliest member's index -> ordered block
+    if not anchor_block:
+        return order
+    out = []
+    for i, n in enumerate(order):
+        if i in anchor_block:
+            out.extend(anchor_block[i])        # emit the whole chain here, in sequence order
+        elif n not in members:
+            out.append(n)                      # other members are skipped (already emitted in their block)
+    return out
+
+
 # ---- session title -> project directory ------------------------------------
 def _tokens(s):
     return set(t for t in re.split(r"[^a-z0-9]+", (s or "").lower()) if t)
@@ -300,6 +323,7 @@ class Project:
             if len(items) >= 2:
                 sequences.append({"id": s.get("id") or _new_seq_id(),
                                   "title": s.get("title", ""), "items": items})
+        order = _group_sequences(order, sequences)   # keep each chain's cards consecutive
         return {"status": status, "order": order, "tag_colors": tag_colors,
                 "next_color": next_color, "sequences": sequences}
 
