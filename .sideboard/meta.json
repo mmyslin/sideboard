@@ -28,22 +28,26 @@
     "48": "backlog",
     "49": "backlog",
     "50": "backlog",
-    "51": "backlog"
+    "51": "backlog",
+    "52": "backlog"
   },
   "order": [
     "8",
     "9",
     "11",
     "12",
+    "7",
+    "38",
+    "45",
+    "48",
+    "49",
+    "51",
     "14",
     "26",
     "27",
-    "7",
     "35",
-    "38",
     "41",
     "40",
-    "45",
     "22",
     "29",
     "39",
@@ -75,19 +79,28 @@
     "42",
     "44",
     "46",
-    "51",
     "50",
-    "49",
-    "48",
-    "47"
+    "47",
+    "52"
   ],
-  "next_color": 5,
+  "next_color": 6,
   "tag_colors": {
+    "enhancement": 5,
     "good first issue": 0,
     "recommendations": 2,
     "sequences": 4,
     "slash commands": 3,
     "ui": 1
   },
-  "sequences": []
+  "sequences": [
+    {
+      "id": "seq-f106c0f1",
+      "title": "Sequence skill + behavior",
+      "items": [
+        48,
+        49,
+        51
+      ]
+    }
+  ]
 }
