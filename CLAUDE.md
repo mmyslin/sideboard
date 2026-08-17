@@ -8,6 +8,11 @@ is **GitHub-only** — there is no `roadmap.json` / local-file mode.
   `.sideboard/meta.json` (committed sidecar); **`done` = a closed issue**; a card's
   `#N` is its GitHub issue number. The sidecar is reconciled automatically by the
   router from the issues + your drag/reorder — don't hand-edit it.
+- **Sequences** — ordered dependency chains of ≥2 issues (in `.sideboard/meta.json`),
+  managed via the `/roadmap-sequence` command + the router's `/api/seq/*`. Honor them
+  when working: starting a sequenced issue with an unfinished predecessor → check in
+  first; closing one → suggest the next. See `skill/SKILL.md` → "Acting on a sequenced
+  issue".
 - **Run the board:** `./sideboard-up.sh` — starts the **router**
   (`sideboard_router.py`) on :7777, which follows the *active* project and serves
   its board. Then open the pane once per project (or use `/roadmap`).

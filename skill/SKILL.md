@@ -51,7 +51,15 @@ guessing at the closest match.
 ## Sequences
 A **sequence** is an ordered chain of **≥2** Backlog/In-Progress issues (each issue in **0 or 1**) with a short title — a build-order / dependency hint. It lives in the sidecar; the board shows a linked-rings pill on chained cards (click it for a drag-reorderable modal), draws a bracket connector down the chain in the Backlog lane, and keeps a chain's cards consecutive. Manage via the router API (POST JSON, instant): `/api/seq/create {items,title}`, `/api/seq/update {id,title?,items?}`, `/api/seq/move {number,id|null}`, `/api/seq/dissolve {id}`. Read current chains from `roadmap.json` (`sequences` + each item's `sequence`).
 
-Propose **dependency-grounded** orderings (code-aware — reason from what the code/issues actually are, not just titles) and let the user **accept / reject / edit** before writing. The **`/roadmap-sequence <N…>`** command drives the targeted modes: one number → report its current chain + propose a fit; several numbers → assemble them into one chain in the order that makes technical sense (defer to the user on whether they belong together). Behavioral hint: once an issue in a chain is done, suggest starting the next; if the user starts one before its predecessors are done, check in first.
+Propose **dependency-grounded** orderings (code-aware — reason from what the code/issues actually are, not just titles) and let the user **accept / reject / edit** before writing. The **`/roadmap-sequence <N…>`** command drives the targeted modes: one number → report its current chain + propose a fit; several numbers → assemble them into one chain in the order that makes technical sense (defer to the user on whether they belong together).
+
+### Acting on a sequenced issue (disposition)
+Sequences are dependency hints — honor them when starting or finishing work. Find a chain from the sidecar `.sideboard/meta.json` `sequences` (or `roadmap.json`'s `sequences` + each item's `sequence` when the board is serving this project); a member is **done when its issue is closed**.
+
+- **Before starting / moving an issue to In Progress** ("start #N", "do #N", "let's build #N"): if #N is in a chain and **any earlier member is still open** (an unfinished predecessor), **check in first** — name the chain and the specific open predecessor(s), and ask whether to start the predecessor instead or go ahead with #N. A nudge, not a block — the user decides.
+- **After closing an issue** in a chain: if the **next** still-open member exists, **suggest it** in one line — e.g. "#N done — next in «Title» is #M: <title>. Start it?"
+
+One short line either way; don't derail the task.
 
 ## Setup / bootstrap (first run in a project)
 1. Confirm prerequisites above (`gh auth status`, Issues enabled on the repo).
