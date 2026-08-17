@@ -15,6 +15,6 @@ Suggest roadmap items for the active Sideboard project by mining the **repo itse
 - Gaps a reader would expect — missing tests / CI / docs / error handling — and unbuilt features the README or docs already promise.
 - **Cross-check against the open issues — never propose anything already tracked.**
 
-Present suggestions as a short numbered list — `<terse title>` + a one-line, code-grounded reason (cite the `file:line`/pattern/commit). If the repo is genuinely well-covered, **say so plainly**; don't pad.
+Present the suggestions as a **checklist in chat** via the `show_widget` tool (visualize): one row per suggestion — an **Add checkbox (checked by default)**, the terse title, and the one-line code-grounded reason (cite the `file:line`/pattern/commit) — plus a **Create selected** button that `sendPrompt`s the checked titles back. If the repo is genuinely well-covered, **say so plainly** (no widget needed); don't pad.
 
-**Ask which to create. Never open an issue before the user confirms.** On confirm, `gh issue create --title "…" [--body "…"]` each accepted item (terse titles — a glanceable board, not a spec; lands in Backlog). Confirm in one line — the board picks them up on its next poll.
+**Nothing is created until the user clicks Create selected.** On that message, `gh issue create --title "…" [--body "…"]` each checked item (terse titles — a glanceable board, not a spec; lands in Backlog). Confirm in one line — the board picks them up on its next poll.
