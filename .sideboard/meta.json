@@ -29,7 +29,9 @@
     "49": "backlog",
     "50": "backlog",
     "51": "backlog",
-    "52": "backlog"
+    "52": "backlog",
+    "53": "backlog",
+    "54": "backlog"
   },
   "order": [
     "8",
@@ -81,7 +83,9 @@
     "46",
     "50",
     "47",
-    "52"
+    "52",
+    "53",
+    "54"
   ],
   "next_color": 6,
   "tag_colors": {
