@@ -118,8 +118,10 @@
     display: flex; align-items: center; gap: 6px;
     font-weight: 700; font-size: 9.5px;
     text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
-    padding: 2px 12px 5px;   /* left gutter matches cards so the title aligns; symmetric right */
+    padding: 2px 5px 5px;    /* compact by default; widens with sequences (#53) */
+    transition: padding .15s ease;
   }
+  .board.has-sequences .col-head { padding: 2px 12px 5px; }   /* align title with the roomy card gutter */
   .col-body {
     flex: 1 1 auto;
     min-height: 0;
@@ -127,9 +129,11 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    padding: 12px;           /* symmetric gutter on all four sides; the left one houses sequence connectors */
+    padding: 5px;            /* compact by default; the roomy gutter (below) is only for sequences (#53) */
+    transition: padding .15s ease;
     position: relative;      /* containing block for the connector overlay */
   }
+  .board.has-sequences .col-body { padding: 12px; }   /* symmetric gutter; the left one houses connectors */
   /* Sequence connectors: a light-gray square bracket in the gutter between
      consecutive members of a sequence (drawn from card offsets in JS). */
   .seq-links { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
@@ -561,6 +565,7 @@ function render(data) {
   document.getElementById("project").textContent = data.project || "Roadmap";
   document.title = "Roadmap";   // fixed title — project can change under a single pane (#37 reverted)
   const board = document.getElementById("board");
+  board.classList.toggle("has-sequences", ((data.sequences && data.sequences.length) || 0) > 0);   // #53: roomy gutter only with sequences
   const items = Array.isArray(data.items) ? data.items : [];
   // snapshot scroll (each lane scrolls independently, plus the page) so a
   // re-render restores position instead of jumping to the top (#42)
