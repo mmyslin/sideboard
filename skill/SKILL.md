@@ -48,6 +48,11 @@ progress", "close out #3". Resolve it to issue N and act (implement it, change
 status, edit, or just answer). If no issue N exists, say so plainly rather than
 guessing at the closest match.
 
+## Sequences
+A **sequence** is an ordered chain of **≥2** Backlog/In-Progress issues (each issue in **0 or 1**) with a short title — a build-order / dependency hint. It lives in the sidecar; the board shows a linked-rings pill on chained cards (click it for a drag-reorderable modal), draws a bracket connector down the chain in the Backlog lane, and keeps a chain's cards consecutive. Manage via the router API (POST JSON, instant): `/api/seq/create {items,title}`, `/api/seq/update {id,title?,items?}`, `/api/seq/move {number,id|null}`, `/api/seq/dissolve {id}`. Read current chains from `roadmap.json` (`sequences` + each item's `sequence`).
+
+Propose **dependency-grounded** orderings (code-aware — reason from what the code/issues actually are, not just titles) and let the user **accept / reject / edit** before writing. The **`/roadmap-sequence <N…>`** command drives the targeted modes: one number → report its current chain + propose a fit; several numbers → assemble them into one chain in the order that makes technical sense (defer to the user on whether they belong together). Behavioral hint: once an issue in a chain is done, suggest starting the next; if the user starts one before its predecessors are done, check in first.
+
 ## Setup / bootstrap (first run in a project)
 1. Confirm prerequisites above (`gh auth status`, Issues enabled on the repo).
 2. Create the sidecar so the router discovers the project:
