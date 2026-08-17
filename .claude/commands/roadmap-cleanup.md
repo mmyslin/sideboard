@@ -9,10 +9,10 @@ Judge each open issue with the **code**, not just its title:
 
 **B. Redundant** — the issue duplicates or is fully subsumed by another issue (open, or already closed). Name the specific **#M** and how they overlap.
 
-Present findings as a short list — for each: `#N <title>` → **action** (close, or merge into #M) + a one-line, code-grounded reason (cite the `file:line`/commit for "done"). If nothing qualifies, **say so plainly** — a clean roadmap is a fine result; don't invent findings.
+Present the findings as a **checklist in chat** via the `show_widget` tool (visualize): one row per finding — an **Apply checkbox (checked by default)**, `#N <title>` → the action (close, or merge into #M), and the one-line code-grounded reason (cite the `file:line`/commit for "done") — plus an **Apply selected** button that `sendPrompt`s the checked findings back. If nothing qualifies, **say so plainly** (no widget) — a clean roadmap is a fine result; don't invent findings.
 
-**Ask which to apply. Never close or merge before the user confirms.** On confirm:
+**Nothing is closed or merged until the user clicks Apply selected.** On that message:
 - done → `gh issue close <N> --comment "<why + the evidence you cited>"`
 - redundant → `gh issue close <N> --comment "Merged into #M — <why>."` (keep the more complete/earlier issue; first move any unique detail from #N into #M if it'd be lost)
 
-After applying, confirm in one line — the board drops the closed cards on its next poll. Keep the whole thing terse; this is grooming, not a report.
+Confirm in one line — the board drops the closed cards on its next poll. Keep it terse; this is grooming, not a report.
