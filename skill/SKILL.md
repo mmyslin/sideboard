@@ -37,6 +37,7 @@ Keep the board honest during normal work, using `gh`:
 - Work lands / user confirms done → `gh issue close <N>`. Reopen with `gh issue reopen <N>`.
 - Scope/notes change → `gh issue edit <N> --title/--body`.
 - Add/remove a feature tag → `gh issue edit <N> --add-label "<tag>"` / `--remove-label`.
+- An open item is already implemented, or duplicates another → the **`/roadmap-cleanup`** command flags it with code evidence and closes/merges it on your OK.
 
 Keep titles terse — this is a glanceable board, not a spec. Mention roadmap
 changes in one short line; don't derail the main task. **Do not create or edit a
