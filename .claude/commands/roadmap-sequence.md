@@ -22,4 +22,10 @@ Parse issue numbers from `$ARGUMENTS` (ignore a leading `sequence` word if prese
 3. **Defer to the user:** default to trusting they want these grouped. Only if the grouping genuinely doesn't hold up (no dependency, a cycle, or they clearly belong in different chains) should you flag it and offer an alternative ordering or a split — but the user has final say over their grouping vs your suggestion.
 4. Present and **ask to accept / reject / edit.** On accept, `POST /api/seq/create` with the final `items` + `title`. **Never write before accept.**
 
-Notes: closed/missing issues auto-drop and a chain that falls below 2 auto-dissolves; members are forced consecutive in the Backlog lane. If no numbers are given, that's the scan-everything recommend mode (#48, not built yet) — say so and ask for specific issue numbers. After any write, confirm the change in one line.
+**No numbers** — recommend mode (scan Backlog + In Progress):
+1. Read roadmap.json (all Backlog + In-Progress items + existing `sequences`), the issue bodies (`gh issue view`), and the relevant code/git to find **real** logical or technical dependencies — code-aware, not thematic. Only propose a chain where each step genuinely enables or precedes the next; **don't pad** with loose groupings (a good result is often zero or one recommendation).
+2. Recommend NEW chains and UPDATES to existing ones, each with a short (≤ ~4-word) title and a one-line dependency rationale.
+3. Present them as a **carousel in chat** via the `show_widget` tool (visualize): one card per recommendation — the title, the ordered chain (numbered #N + titles), the rationale, and **Accept / Edit / Dismiss** buttons. Accept and Edit call `sendPrompt(...)` with a clear message; Dismiss hides the card client-side. Multiple recs → a horizontal stepper/scroll; one → a single card.
+4. On accept (the sendPrompt message), call the API — `seq/create` for a new chain, `seq/update` for an edit to an existing one — then confirm in one line. **Never write before an accept.**
+
+Notes: closed/missing issues auto-drop and a chain that falls below 2 auto-dissolves; members are forced consecutive in the Backlog lane. After any write, confirm the change in one line.
