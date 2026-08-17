@@ -26,6 +26,7 @@ PROJECTS_ROOT = os.path.abspath(os.environ.get(
     "SIDEBOARD_PROJECTS_ROOT", os.path.join(HOME, "Documents", "Projects")))
 PORT = int(os.environ.get("SIDEBOARD_PORT", "7777"))
 SYNC_SECONDS = int(os.environ.get("SIDEBOARD_SYNC_SECONDS", "45"))
+ERROR_RETRY_SECONDS = int(os.environ.get("SIDEBOARD_ERROR_RETRY_SECONDS", "5"))   # retry faster while errored (#52)
 SCHEMA = 2   # .sideboard/meta.json schema version (migrated forward on load); v2 added sequences (#47)
 
 LOCK = threading.RLock()
@@ -182,6 +183,16 @@ def _is_perm_error(text):
 _PERM_MSG = ("macOS blocked this router from reading the project folder in "
              "~/Documents. Restart it: run ./sideboard-up.sh in the repo.")
 
+# A transient connectivity error (laptop sleep/wake, wifi switch) — treat gently: keep
+# the last-known board, say "reconnecting", and retry fast until it clears (#52).
+_NET_MARKERS = ("error connecting to", "could not resolve host", "network is unreachable",
+                "connection refused", "no such host", "dial tcp", "timeout", "timed out",
+                "temporary failure in name resolution", "check your internet connection")
+def _is_net_error(text):
+    t = (text or "").lower()
+    return any(m in t for m in _NET_MARKERS)
+_NET_MSG = "Can't reach GitHub — reconnecting…"
+
 def access_ok():
     """Can this process read the projects root? macOS TCC can deny a hook-launched
     daemon access to ~/Documents; when it does, the launcher should relaunch the
@@ -228,10 +239,14 @@ class Project:
                 return slug
             if _is_perm_error(r.stderr):
                 self._detect_err = _PERM_MSG
+            elif _is_net_error(r.stderr):
+                self._detect_err = _NET_MSG
             return None
         except Exception as e:
             if _is_perm_error(str(e)):
                 self._detect_err = _PERM_MSG
+            elif _is_net_error(str(e)):
+                self._detect_err = _NET_MSG
             return None
 
     def _gh(self, *args):
@@ -346,6 +361,7 @@ class Project:
             except subprocess.CalledProcessError as e:
                 stderr = (e.stderr or "").strip()
                 self.error = (_PERM_MSG if _is_perm_error(stderr) else
+                              _NET_MSG if _is_net_error(stderr) else
                               f"Couldn't read GitHub Issues for {self.repo}: "
                               f"{stderr or 'is `gh` authenticated and are Issues enabled?'}")
                 return
@@ -359,7 +375,9 @@ class Project:
     def board(self):
         with self.lock:
             bv = str(int(os.path.getmtime(BOARD_HTML)))
-            if self.error:
+            # A transient network error keeps the last-known cards (just flags "reconnecting");
+            # any other error blanks the board with the reason (#52).
+            if self.error and self.error != _NET_MSG:
                 return {"updated_at": self.synced_at or _now(), "project": self.title,
                         "mode": "github", "board_version": bv, "items": [], "error": self.error}
             meta = self._load_meta()
@@ -382,10 +400,14 @@ class Project:
                               "sequence": seq_by_item.get(n)})
             # updated_at is the last SYNC time, not now — so the polled payload is byte-identical
             # between syncs and the board doesn't re-render (and reset scroll) every poll (#42)
-            return {"updated_at": self.synced_at or _now(), "project": self.title, "mode": "github",
-                    "board_version": bv, "items": items,
-                    "sequences": [{"id": s["id"], "title": s["title"], "items": [int(x) for x in s["items"]]}
-                                  for s in meta["sequences"]]}
+            out = {"updated_at": self.synced_at or _now(), "project": self.title, "mode": "github",
+                   "board_version": bv, "items": items,
+                   "sequences": [{"id": s["id"], "title": s["title"], "items": [int(x) for x in s["items"]]}
+                                 for s in meta["sequences"]]}
+            if self.error == _NET_MSG:            # reconnecting: last-known cards + a soft indicator (#52)
+                out["error"] = self.error
+                out["error_offline"] = True
+            return out
 
     # -- writes ---------------------------------------------------------------
     def apply_drop(self, number, status, order):
@@ -541,11 +563,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
             p = STATE["active"]
             return self._send(200, json.dumps({"router": True, "active": p.title if p else None,
                                                 "access_ok": access_ok()}))
-        if path in ("/", "/roadmap-board.html"):
-            v = str(int(os.path.getmtime(BOARD_HTML)))
-            html = open(BOARD_HTML, encoding="utf-8").read().replace(
-                "</head>", f'<script>window.__BV="{v}";</script>\n</head>', 1)
-            return self._send(200, html, "text/html; charset=utf-8")
         if path == "/projects":
             return self._send(200, json.dumps({"projects": list_projects()}))
         if path == "/roadmap.json":
@@ -569,7 +586,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 print(f"[router] board error (project={pid}): {e}", file=sys.stderr, flush=True)
                 board = empty
             return self._send(200, json.dumps(board, ensure_ascii=False))
-        self._send(404, "{}")
+        # Fallback: serve the board for "/", "/roadmap-board.html", and ANY other GET path — so a
+        # stale/odd pane URL restored on session return still renders the roadmap, not a 404.
+        v = str(int(os.path.getmtime(BOARD_HTML)))
+        html = open(BOARD_HTML, encoding="utf-8").read().replace(
+            "</head>", f'<script>window.__BV="{v}";</script>\n</head>', 1)
+        self._send(200, html, "text/html; charset=utf-8")
 
     def do_POST(self):
         path = self.path.split("?")[0]
@@ -616,7 +638,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 def sync_loop():
     while True:
-        time.sleep(SYNC_SECONDS)
+        active = STATE["active"]
+        # retry fast while the active board is errored so a blip clears in seconds, not ~45s (#52)
+        time.sleep(ERROR_RETRY_SECONDS if (active and active.error) else SYNC_SECONDS)
         for p in list(CACHE.values()):     # keep the active project AND any pinned/viewed one fresh
             _safe_sync(p)
 

@@ -677,8 +677,8 @@ new ResizeObserver(() => { cancelAnimationFrame(_connRaf); _connRaf = requestAni
 function setStatus(state, data) {
   const dot = document.getElementById("dot");
   const status = document.getElementById("status");
-  dot.className = "dot" + (state === "err" ? " err" : state === "stale" ? " stale" : "");
-  if (state === "err") { status.textContent = (data && data.error) || "can't reach the board server…"; return; }
+  dot.className = "dot" + (state === "err" ? " err" : (state === "stale" || state === "offline") ? " stale" : "");
+  if (state === "err" || state === "offline") { status.textContent = (data && data.error) || "can't reach the board server…"; return; }
   const up = data && data.updated_at ? "updated " + rel(data.updated_at) : "live";
   status.textContent = up;
 }
@@ -699,7 +699,7 @@ async function poll() {
     // re-render (and scroll jump) even when nothing changed (#42)
     const sig = JSON.stringify({ p: data.project, m: data.mode, items: data.items, e: data.error });
     if (sig !== lastRaw) { lastRaw = sig; render(data); }
-    if (data.error) { setStatus("err", data); return; }
+    if (data.error) { setStatus(data.error_offline ? "offline" : "err", data); return; }
     const age = data.updated_at ? Date.now() - new Date(data.updated_at).getTime() : 0;
     setStatus(age > 3600000 ? "stale" : "ok", data);
   } catch (e) {
