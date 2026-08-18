@@ -503,11 +503,15 @@ class Project:
         return {str(i["number"]) for i in self.issues}
 
     def _write_sequences(self, mutate):
-        """Load meta, let mutate(sequences) change it in place, then reconcile+save."""
+        """Load meta, let mutate(sequences) change it in place, then reconcile+save.
+        Never reconcile against an empty issue list: on a failed/pending first sync
+        self.issues is [], and reconciling would treat every issue as deleted —
+        wiping status, order, and every sequence from the sidecar (#61). Save the
+        mutated meta as-is instead; the next real sync validates it."""
         with self.lock:
             meta = self._load_meta()
             res = mutate(meta["sequences"])
-            self._save_meta(self._reconcile(self.issues, meta))
+            self._save_meta(self._reconcile(self.issues, meta) if self.issues else meta)
         return res
 
     def seq_create(self, items, title=""):
