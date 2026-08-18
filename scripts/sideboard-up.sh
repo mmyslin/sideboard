@@ -19,8 +19,8 @@ launch() {
   # Anchor to the interpreter so a bare filename in an editor/pager argv (e.g.
   # `vim sideboard_router.py`) isn't SIGKILLed too (#66).
   pkill -9 -f 'python3? .*(sideboard_router|vibemap_router|github_companion)\.py' 2>/dev/null
-  nohup python3 sideboard_router.py >/tmp/sideboard-router.log 2>&1 &
-  date +%s >/tmp/sideboard-relaunch.stamp
+  nohup python3 sideboard_router.py >"$HOME/.claude/sideboard-router.log" 2>&1 &
+  date +%s >"$HOME/.claude/sideboard-relaunch.stamp"
   for _ in $(seq 1 40); do is_router "$(health)" && break; sleep 0.05; done   # ready within ~2s
 }
 
@@ -31,7 +31,7 @@ if is_router "$h"; then
   else
     # Up, but macOS is blocking its ~/Documents access (#46). Relaunch from this
     # context, which normally holds the grant. Rate-limited to avoid a loop.
-    last=$(cat /tmp/sideboard-relaunch.stamp 2>/dev/null || echo 0)
+    last=$(cat "$HOME/.claude/sideboard-relaunch.stamp" 2>/dev/null || echo 0)
     if [ "$(( $(date +%s) - last ))" -ge 60 ]; then
       echo "router up but has no ~/Documents access — relaunching (#46)"
       launch

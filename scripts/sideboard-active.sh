@@ -31,8 +31,8 @@ launch() {
   # and would SIGKILL an editor viewing the source (#66). Still catches legacy
   # vibemap_router.py / github_companion.py processes.
   pkill -9 -f 'python3? .*(sideboard_router|vibemap_router|github_companion)\.py' 2>/dev/null
-  nohup python3 "$HERE/sideboard_router.py" >/tmp/sideboard-router.log 2>&1 &
-  date +%s >/tmp/sideboard-relaunch.stamp
+  nohup python3 "$HERE/sideboard_router.py" >"$HOME/.claude/sideboard-router.log" 2>&1 &
+  date +%s >"$HOME/.claude/sideboard-relaunch.stamp"
   sleep 1
 }
 
@@ -41,7 +41,7 @@ launch() {
 # it — otherwise the "hook starts the board for you" promise was conditional (#65).
 # Rate-limited to one relaunch/60s.
 if ! curl -sf -m 1 http://127.0.0.1:7777/healthz >/dev/null 2>&1; then
-  last=$(cat /tmp/sideboard-relaunch.stamp 2>/dev/null || echo 0)
+  last=$(cat "$HOME/.claude/sideboard-relaunch.stamp" 2>/dev/null || echo 0)
   [ "$(( $(date +%s) - last ))" -ge 60 ] && launch
 fi
 
@@ -53,7 +53,7 @@ resp="$(post)"
 # failing (e.g. a persistent 500), an unthrottled relaunch would pkill -9 + restart on
 # EVERY prompt — a storm that can itself corrupt sidecars (#60).
 if [ -z "$resp" ]; then
-  last=$(cat /tmp/sideboard-relaunch.stamp 2>/dev/null || echo 0)
+  last=$(cat "$HOME/.claude/sideboard-relaunch.stamp" 2>/dev/null || echo 0)
   [ "$(( $(date +%s) - last ))" -ge 60 ] && { launch; resp="$(post)"; }
 fi
 
@@ -64,7 +64,7 @@ fi
 # (e.g. Claude itself lacking the grant) can't relaunch on every prompt.
 if printf '%s' "$resp" | grep -q '"ok": *true' \
    && ! printf '%s' "$resp" | grep -q '"access_ok": *true'; then
-  last=$(cat /tmp/sideboard-relaunch.stamp 2>/dev/null || echo 0)
+  last=$(cat "$HOME/.claude/sideboard-relaunch.stamp" 2>/dev/null || echo 0)
   [ "$(( $(date +%s) - last ))" -ge 60 ] && { launch; post >/dev/null; }
 fi
 exit 0
