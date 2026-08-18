@@ -37,8 +37,8 @@ Keep the board honest during normal work, using `gh`:
 - Work lands / user confirms done → `gh issue close <N>`. Reopen with `gh issue reopen <N>`.
 - Scope/notes change → `gh issue edit <N> --title/--body`.
 - Add/remove a feature tag → `gh issue edit <N> --add-label "<tag>"` / `--remove-label`.
-- An open item is already implemented, or duplicates another → the **`/roadmap-cleanup`** command flags it with code evidence and closes/merges it on your OK.
-- Need fresh items (or a board from scratch on a new project) → the **`/roadmap-suggest`** command mines the repo (TODOs, stubs, churn, gaps, unbuilt promises) and seeds issues on your OK.
+- An open item is already implemented, or duplicates another → the **`/sideboard:roadmap-cleanup`** command flags it with code evidence and closes/merges it on your OK.
+- Need fresh items (or a board from scratch on a new project) → the **`/sideboard:roadmap-suggest`** command mines the repo (TODOs, stubs, churn, gaps, unbuilt promises) and seeds issues on your OK.
 
 Keep titles terse — this is a glanceable board, not a spec. Mention roadmap
 changes in one short line; don't derail the main task. **Do not create or edit a
@@ -53,7 +53,7 @@ guessing at the closest match.
 ## Sequences
 A **sequence** is an ordered chain of **≥2** Backlog/In-Progress issues (each issue in **0 or 1**) with a short title — a build-order / dependency hint. It lives in the sidecar; the board shows a linked-rings pill on chained cards (click it for a drag-reorderable modal), draws a bracket connector down the chain in the Backlog lane, and keeps a chain's cards consecutive. Manage via the router API (POST JSON, instant): `/api/seq/create {items,title}`, `/api/seq/update {id,title?,items?}`, `/api/seq/move {number,id|null}`, `/api/seq/dissolve {id}`. Read current chains from `roadmap.json` (`sequences` + each item's `sequence`).
 
-Propose **dependency-grounded** orderings (code-aware — reason from what the code/issues actually are, not just titles) and let the user **accept / reject / edit** before writing. The **`/roadmap-sequence <N…>`** command drives the targeted modes: one number → report its current chain + propose a fit; several numbers → assemble them into one chain in the order that makes technical sense (defer to the user on whether they belong together).
+Propose **dependency-grounded** orderings (code-aware — reason from what the code/issues actually are, not just titles) and let the user **accept / reject / edit** before writing. The **`/sideboard:roadmap-sequence <N…>`** command drives the targeted modes: one number → report its current chain + propose a fit; several numbers → assemble them into one chain in the order that makes technical sense (defer to the user on whether they belong together).
 
 ### Acting on a sequenced issue (disposition)
 Sequences are dependency hints — honor them when starting or finishing work. Find a chain from the sidecar `.sideboard/meta.json` `sequences` (or `roadmap.json`'s `sequences` + each item's `sequence` when the board is serving this project); a member is **done when its issue is closed**.
@@ -66,7 +66,7 @@ One short line either way; don't derail the task.
 ## Setup / bootstrap (first run in a project)
 1. Confirm prerequisites above (`gh auth status`, Issues enabled on the repo).
 2. Create the sidecar so the router discovers the project:
-   `mkdir -p .sideboard && printf '{"schema": 1}\n' > .sideboard/meta.json` — then
+   `mkdir -p .sideboard && printf '{"schema": 2}\n' > .sideboard/meta.json` — then
    commit it. The router reconciles it from your existing issues on first sync
    (all open issues start in Backlog; reorder/split by dragging on the board).
 3. Start the board server. It normally comes up on its own — the plugin's
@@ -79,6 +79,7 @@ One short line either way; don't derail the task.
 
 ## Displaying on demand
 If the router is already running, just re-open
-`http://127.0.0.1:7777/roadmap-board.html` (or use the `/roadmap` command). The
-board auto-refreshes; you never reload it after a `gh` change — the next 2s poll
-picks it up.
+`http://127.0.0.1:7777/roadmap-board.html` (or use the `/sideboard:roadmap` command). The
+board auto-refreshes; you never reload it. Edits made through the board are
+instant; a change you make with `gh` directly shows up on the router's next
+GitHub sync (~45s), not the 2s board poll.

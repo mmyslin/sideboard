@@ -6,7 +6,7 @@ Sideboard shows your repo's GitHub Issues as a live roadmap board that you and [
 
 <img width="3300" height="1771" alt="sideboard" src="https://github.com/user-attachments/assets/fa8e6c52-b8d9-4615-9c85-79ada1c75024" />
 
-Claude Code has no API for custom side panels, but its desktop app lets you pin any local web page in the **preview pane** next to chat. Sideboard is that page: a zero-dependency HTML board whose source of truth is your **GitHub Issues**. A companion **skill** teaches Claude to keep the board current with `gh` during normal conversation — filing what you decide to build, moving cards to *In Progress*, closing them *Done* when work lands. It polls every 2 seconds, so it moves on its own.
+Claude Code has no API for custom side panels, but its desktop app lets you pin any local web page in the **preview pane** next to chat. Sideboard is that page: a zero-dependency HTML board whose source of truth is your **GitHub Issues**. A companion **skill** teaches Claude to keep the board current with `gh` during normal conversation — filing what you decide to build, moving cards to *In Progress*, closing them *Done* when work lands. It refreshes on its own — board edits show instantly, and changes made with `gh` directly appear on the next GitHub sync.
 
 ## Code-aware roadmap skills
 
@@ -29,7 +29,7 @@ Claude Code plugins run with your user privileges, so it's worth knowing exactly
 
 - **A localhost-only HTTP server** (`scripts/sideboard_router.py`) bound to `127.0.0.1:7777`. It never listens on a public interface and makes no outbound network calls of its own.
 - **`gh` on your behalf** — `gh issue list/create/edit/close` and `gh label` — to read and update the roadmap. All GitHub access goes through your already-authenticated `gh`; the plugin stores no tokens or credentials.
-- **Two hooks** — on session start and on each prompt, a fire-and-forget bash script (`scripts/sideboard-active.sh`) tells the running server which project is active. It never blocks your prompt.
+- **Two hooks** — on session start and on each prompt, a small bash script (`scripts/sideboard-active.sh`) tells the running server which project is active. It's bounded (a ~1s timeout) and always exits 0, so it never fails your prompt.
 
 It doesn't download or execute remote code, phone home, or touch anything beyond your repos' issues and the committed `.sideboard/meta.json`.
 

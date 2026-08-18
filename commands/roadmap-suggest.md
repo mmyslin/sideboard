@@ -17,4 +17,4 @@ Suggest roadmap items for the active Sideboard project by mining the **repo itse
 
 Present the suggestions as a **checklist in chat** via the `show_widget` tool (visualize): one row per suggestion — an **Add checkbox (checked by default)**, the terse title, and the one-line code-grounded reason (cite the `file:line`/pattern/commit) — plus a **Create selected** button that `sendPrompt`s the checked titles back. If the repo is genuinely well-covered, **say so plainly** (no widget needed); don't pad.
 
-**Nothing is created until the user clicks Create selected.** On that message, `gh issue create --title "…" [--body "…"]` each checked item (terse titles — a glanceable board, not a spec; lands in Backlog). Confirm in one line — the board picks them up on its next poll.
+**Nothing is created until the user clicks Create selected.** On that message, `gh issue create --title "…" [--body "…"]` each checked item (terse titles — a glanceable board, not a spec; lands in Backlog). Confirm in one line — the board picks them up on the router's next GitHub sync (~45s).

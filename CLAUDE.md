@@ -9,7 +9,7 @@ is **GitHub-only** — there is no `roadmap.json` / local-file mode.
   `#N` is its GitHub issue number. The sidecar is reconciled automatically by the
   router from the issues + your drag/reorder — don't hand-edit it.
 - **Sequences** — ordered dependency chains of ≥2 issues (in `.sideboard/meta.json`),
-  managed via the `/roadmap-sequence` command + the router's `/api/seq/*`. Honor them
+  managed via the `/sideboard:roadmap-sequence` command + the router's `/api/seq/*`. Honor them
   when working: starting a sequenced issue with an unfinished predecessor → check in
   first; closing one → suggest the next. See `skills/sideboard/SKILL.md` → "Acting on
   a sequenced issue".
@@ -35,12 +35,12 @@ is **GitHub-only** — there is no `roadmap.json` / local-file mode.
   POSTs the session TITLE to the router, which maps title→project dir
   (`~/.claude/sideboard-projects.json`, token-matched, editable) and switches the
   served board. cwd is useless here (always $HOME) — title is the only signal.
-  The preview pane is per-session, so open it once per project with `/roadmap`;
+  The preview pane is per-session, so open it once per project with `/sideboard:roadmap`;
   thereafter switching projects (send a message) makes each project's pane show
   its own roadmap.
 - **Discovery** keys off `.sideboard/meta.json`: a project is only picked up once
   that sidecar exists. Bootstrap a new repo with
-  `mkdir -p .sideboard && printf '{"schema": 1}\n' > .sideboard/meta.json` (commit
+  `mkdir -p .sideboard && printf '{"schema": 2}\n' > .sideboard/meta.json` (commit
   it); the router reconciles it from the issues on first sync.
 - Design + phases: `docs/github-sync-design.md` (#15). Distribution: shipped as a
   Claude Code plugin (#12) — community-marketplace submission is the remaining

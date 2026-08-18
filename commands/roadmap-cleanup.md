@@ -15,4 +15,4 @@ Present the findings as a **checklist in chat** via the `show_widget` tool (visu
 - done → `gh issue close <N> --comment "<why + the evidence you cited>"`
 - redundant → `gh issue close <N> --comment "Merged into #M — <why>."` (keep the more complete/earlier issue; first move any unique detail from #N into #M if it'd be lost)
 
-Confirm in one line — the board drops the closed cards on its next poll. Keep it terse; this is grooming, not a report.
+Confirm in one line — the board drops the closed cards on the router's next GitHub sync (~45s). Keep it terse; this is grooming, not a report.
