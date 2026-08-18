@@ -364,6 +364,7 @@ let renderedProjectId = null;   // id of the project the last poll actually rend
 // Route writes to the project this pane is SHOWING, not just whichever is active —
 // else a pinned/lagging pane mutates the wrong repo (#58). Pin wins; else the last poll's id.
 const currentProjectId = () => pinnedId || renderedProjectId;
+let cancelDrag = () => {};      // replaced by enableDnD; poll() calls it on a project flip (#80)
 const expanded = new Set();   // item ids whose description is expanded (persists across re-renders)
 const collapsed = new Set();  // lane keys collapsed to just their header (#14; persists across re-renders)
 const grow = {};              // per-lane flex-grow, set by dragging resizers (persists across re-renders)
@@ -398,6 +399,10 @@ function toast(msg) {
 // Create / edit a card -> POST /api/create or /api/edit (github mode).
 function openEditor(mode, data) {
   data = data || {};
+  // Capture the target project NOW — the pane can re-render to another project
+  // (auto-follow, pin switch) while the modal is open, and a submit-time lookup
+  // would route this card's write to that other repo (#80).
+  const proj = currentProjectId();
   document.getElementById("card-editor")?.remove();
   const m = document.createElement("div");
   m.id = "card-editor";
@@ -421,8 +426,8 @@ function openEditor(mode, data) {
     if (!title) { titleEl.focus(); return; }
     const url = mode === "create" ? "/api/create" : "/api/edit";
     const payload = mode === "create"
-      ? { title, notes: notesEl.value, project: currentProjectId() }
-      : { number: data.number, title, notes: notesEl.value, project: currentProjectId() };
+      ? { title, notes: notesEl.value, project: proj }
+      : { number: data.number, title, notes: notesEl.value, project: proj };
     close();
     toast(mode === "create" ? "Adding…" : "Saving…");
     fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
@@ -441,8 +446,10 @@ function seqPill(seq) {
   return `<button type="button" class="seq-pill" data-seq="${esc(seq.id)}" title="${esc(t)}" aria-label="${esc(t)}">${ICON_SEQ}</button>`;
 }
 
-function apiPost(url, body) {
-  return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, project: currentProjectId() }) })
+function apiPost(url, body, proj) {
+  // `proj` is the project captured when the interaction STARTED (modal open /
+  // dragstart) — never resolved at send time, which could race a project switch (#80).
+  return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, project: proj !== undefined ? proj : currentProjectId() }) })
     .then(r => { if (!r.ok) throw new Error(r.status); })
     .catch(() => toast("Not saved — is the router running?"));
 }
@@ -461,6 +468,7 @@ function rowAfter(container, y) {
 function openSequence(seqId) {
   const data = latestData;
   if (!data) return;
+  const proj = currentProjectId();   // capture at open, not at each save (#80)
   const seq = (data.sequences || []).find(s => s.id === seqId);
   if (!seq) return;
   const byRef = {};
@@ -496,7 +504,7 @@ function openSequence(seqId) {
   const close = () => m.remove();
   m.addEventListener("mousedown", (e) => { if (e.target === m) close(); });
   m.querySelector(".sq-close").addEventListener("click", close);
-  const saveTitle = () => apiPost("/api/seq/update", { id: seqId, title: titleEl.value.trim() });
+  const saveTitle = () => apiPost("/api/seq/update", { id: seqId, title: titleEl.value.trim() }, proj);
   titleEl.addEventListener("change", saveTitle);
   titleEl.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); titleEl.blur(); } });
   chain.addEventListener("dragstart", (e) => { const r = e.target.closest(".sq-row"); if (r) r.classList.add("dragging"); });
@@ -515,7 +523,7 @@ function openSequence(seqId) {
     if (next.join() === order.join()) return;   // no change
     order = next;
     drawChain();
-    apiPost("/api/seq/update", { id: seqId, items: order });
+    apiPost("/api/seq/update", { id: seqId, items: order }, proj);
   });
   document.body.appendChild(m);
 }
@@ -523,6 +531,7 @@ function openSequence(seqId) {
 // Manage a card's tags -> POST /api/label (github mode; tags = GitHub labels).
 function openTags(card) {
   const number = Number(card.dataset.ref);
+  const proj = currentProjectId();   // capture at open, not per-post (#80)
   let tags = [...card.querySelectorAll(".card-head .tag")].map(t => t.textContent);
   document.getElementById("card-editor")?.remove();
   const m = document.createElement("div");
@@ -540,7 +549,7 @@ function openTags(card) {
   const input = m.querySelector("input");
   const post = (payload) => fetch("/api/label", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(Object.assign({ number, project: currentProjectId() }, payload)),
+    body: JSON.stringify(Object.assign({ number, project: proj }, payload)),
   }).then(r => { if (!r.ok) throw new Error(r.status); })
     .catch(() => toast("Tag change not saved — is the board server running?"));
   const renderChips = () => {
@@ -705,7 +714,16 @@ async function poll() {
     const raw = await res.text();
     const data = JSON.parse(raw);
     latestData = data;   // keep fresh for the sequence modal (#50)
-    if (data.project_id !== undefined) renderedProjectId = data.project_id;   // route writes here (#58)
+    if (data.project_id !== undefined) {
+      if (renderedProjectId !== null && data.project_id !== renderedProjectId) {
+        // The pane just switched projects (auto-follow or pin): any open modal or
+        // in-flight drag belongs to the OLD project — kill it before it can write
+        // through the new routing (#80).
+        document.getElementById("card-editor")?.remove();
+        cancelDrag();
+      }
+      renderedProjectId = data.project_id;   // route writes here (#58)
+    }
     if (window.__BV && data.board_version && data.board_version !== window.__BV) {
       location.replace("/?_bv=" + data.board_version + pinQ); return;   // stale HTML -> reload fresh at root, keep the pin (#67)
     }
@@ -824,6 +842,9 @@ document.getElementById("board").addEventListener("click", (e) => {
 (function enableDnD() {
   const board = document.getElementById("board");
   let dragEl = null;
+  let dragProj = null;   // project captured at dragstart, sent at dragend (#80)
+  // Let poll() abort a drag whose project just changed under it (#80).
+  cancelDrag = () => { if (dragEl) { dragEl.classList.remove("dragging"); dragEl = null; dragProj = null; } };
 
   const dragAfter = (bodyEl, y) => {
     for (const c of bodyEl.querySelectorAll(".card:not(.dragging)")) {
@@ -837,6 +858,7 @@ document.getElementById("board").addEventListener("click", (e) => {
     const card = e.target.closest(".card");
     if (!card || e.target.closest(".card-actions") || e.target.closest(".seq-pill")) { e.preventDefault(); return; }
     dragEl = card;
+    dragProj = currentProjectId();
     card.classList.add("dragging");
     e.dataTransfer.effectAllowed = "move";
     try { e.dataTransfer.setData("text/plain", card.dataset.ref); } catch (_) {}
@@ -854,7 +876,8 @@ document.getElementById("board").addEventListener("click", (e) => {
 
   board.addEventListener("dragend", () => {
     if (!dragEl) return;
-    const card = dragEl; dragEl = null;
+    const card = dragEl, proj = dragProj;
+    dragEl = null; dragProj = null;
     card.classList.remove("dragging");
     const status = card.closest(".col") && card.closest(".col").dataset.key;
     if (!status) return;
@@ -863,7 +886,7 @@ document.getElementById("board").addEventListener("click", (e) => {
     fetch("/api/drop", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ number, status, order, project: currentProjectId() }),
+      body: JSON.stringify({ number, status, order, project: proj }),   // captured at dragstart (#80)
     }).then(r => { if (!r.ok) throw new Error(r.status); })
       .catch(() => toast("Move not saved — is the board server running?"));
   });
@@ -896,6 +919,8 @@ document.getElementById("board").addEventListener("click", (e) => {
   menu.addEventListener("click", e => {
     const item = e.target.closest(".proj-item"); if (!item) return;
     pinnedId = item.dataset.id || null;
+    document.getElementById("card-editor")?.remove();   // modal targets the OLD project (#80)
+    cancelDrag();
     const u = new URL(location.href);
     pinnedId ? u.searchParams.set("project", pinnedId) : u.searchParams.delete("project");
     history.replaceState(null, "", u);            // per-pane, survives reloads

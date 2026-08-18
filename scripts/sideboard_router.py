@@ -188,29 +188,71 @@ def project_name(d):
     return os.path.basename(d)
 
 
+def _has_sidecar(d):
+    return (os.path.exists(os.path.join(d, ".sideboard", "meta.json"))
+            or os.path.exists(os.path.join(d, ".vibemap", "meta.json")))
+
+
+def project_id(d):
+    """The board-facing id for a project dir: its basename when it sits directly
+    under PROJECTS_ROOT, else its FULL path. Basenames are ambiguous for
+    registry-mapped projects outside the root — a bare name would resolve to a
+    same-named dir under the root (or nothing), routing writes to the wrong
+    repo (#81)."""
+    if os.path.dirname(os.path.realpath(d)) == os.path.realpath(PROJECTS_ROOT):
+        return os.path.basename(d)
+    return d
+
+
 def project_by_id(pid):
-    """Resolve a dropdown project id (dir basename) to a directory, confined to
-    PROJECTS_ROOT. The id is attacker-controllable (the `project` query param), so
-    reject path separators and anything that escapes the root — no `../` traversal,
-    no reading arbitrary dirs' meta.json or spawning gh with cwd anywhere (#59)."""
-    if not pid or pid in (".", "..") or os.sep in pid or (os.altsep and os.altsep in pid):
+    """Resolve a board-sent project id to a directory. Ids are attacker-adjacent
+    (query param / POST body), so resolution is an ALLOW-LIST, not a path join:
+    a bare name must be a sidecar-bearing dir directly under PROJECTS_ROOT (or a
+    registry value there); an absolute path must realpath-match a registry value
+    or a sidecar-bearing dir under the root. No `../` traversal (#59), no
+    resolving arbitrary dirs (#90), no basename collisions for out-of-root
+    registry projects (#81)."""
+    if not pid:
         return None
     root = os.path.realpath(PROJECTS_ROOT)
+    reg_paths = {os.path.realpath(p) for p in _load_registry().values()}
+    if os.path.isabs(pid):
+        d = os.path.realpath(pid)
+        if not os.path.isdir(d):
+            return None
+        try:
+            in_root = os.path.commonpath([root, d]) == root and os.path.dirname(d) == root
+        except ValueError:
+            in_root = False
+        if d in reg_paths or (in_root and _has_sidecar(d)):
+            return d
+        return None
+    if pid in (".", "..") or os.sep in pid or (os.altsep and os.altsep in pid):
+        return None
     d = os.path.realpath(os.path.join(root, pid))
     try:
         if os.path.commonpath([root, d]) != root:
             return None
     except ValueError:      # different drive, etc.
         return None
-    return d if os.path.isdir(d) else None
+    if not os.path.isdir(d) or not (_has_sidecar(d) or d in reg_paths):
+        return None
+    return d
 
 
 def list_projects():
-    """All Sideboard projects under PROJECTS_ROOT, for the board's switcher dropdown."""
+    """All Sideboard projects — sidecar dirs under PROJECTS_ROOT plus registry-
+    mapped dirs outside it (#81) — for the board's switcher dropdown."""
     active = STATE["active"]
-    return [{"id": os.path.basename(d), "name": project_name(d),
+    dirs = list(_candidate_dirs())
+    seen = {os.path.realpath(d) for d in dirs}
+    for p in _load_registry().values():
+        if os.path.isdir(p) and os.path.realpath(p) not in seen:
+            seen.add(os.path.realpath(p))
+            dirs.append(p)
+    return [{"id": project_id(d), "name": project_name(d),
              "active": bool(active) and active.path == d}
-            for d in _candidate_dirs()]
+            for d in dirs]
 
 
 # ---- macOS TCC / permission resilience (#46) -------------------------------
@@ -457,7 +499,7 @@ class Project:
             # any other error blanks the board with the reason (#52).
             if self.error and self.error != _NET_MSG:
                 return {"updated_at": self.synced_at or _now(), "project": self.title,
-                        "project_id": os.path.basename(self.path),
+                        "project_id": project_id(self.path),
                         "mode": "github", "board_version": bv, "items": [], "error": self.error}
             meta = self._load_meta()
             by_num = {str(i["number"]): i for i in self.issues}
@@ -480,7 +522,7 @@ class Project:
             # updated_at is the last SYNC time, not now — so the polled payload is byte-identical
             # between syncs and the board doesn't re-render (and reset scroll) every poll (#42)
             out = {"updated_at": self.synced_at or _now(), "project": self.title, "mode": "github",
-                   "project_id": os.path.basename(self.path),
+                   "project_id": project_id(self.path),
                    "board_version": bv, "items": items,
                    "sequences": [{"id": s["id"], "title": s["title"], "items": [int(x) for x in s["items"]]}
                                  for s in meta["sequences"]]}
@@ -507,7 +549,10 @@ class Project:
                     issue["state"] = "open"     # (#75)
                 meta["status"][n] = status
             if order:
-                meta["order"] = [str(x) for x in order]
+                # Only accept numbers this project knows — a stale pane's order from
+                # ANOTHER project must not wholesale-replace this one's curation (#80).
+                known = self._present() | set(meta["order"])
+                meta["order"] = [str(x) for x in order if str(x) in known]
             self._save_meta(meta)
         self.sync()
 
@@ -731,6 +776,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 p = STATE["active"]
             if p is None:
                 return self._send(409, json.dumps({"ok": False, "error": "no active project"}))
+            # Defense in depth (#80): a write must target an issue that is actually on
+            # the resolved project's board. Issue numbers collide across repos, so a
+            # stale pane racing a project switch would otherwise mutate a real,
+            # unrelated issue in the other repo.
+            if path in ("/api/drop", "/api/edit", "/api/label", "/api/seq/move") \
+               and str(int(body["number"])) not in {str(i["number"]) for i in p.issues}:
+                return self._send(409, json.dumps({"ok": False, "error": "issue not on this project's board"}))
             if path == "/api/drop":
                 p.apply_drop(int(body["number"]), body["status"], body.get("order"))
                 return self._send(200, json.dumps({"ok": True}))
