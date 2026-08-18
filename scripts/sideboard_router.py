@@ -41,6 +41,7 @@ PORT = int(os.environ.get("SIDEBOARD_PORT", "7777"))
 _ALLOWED_HOSTS = frozenset({f"127.0.0.1:{PORT}", f"localhost:{PORT}"})
 _ALLOWED_ORIGINS = frozenset({f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}"})
 SYNC_SECONDS = int(os.environ.get("SIDEBOARD_SYNC_SECONDS", "45"))
+MAX_BODY = 1 << 20     # cap POST bodies at 1 MiB — a huge Content-Length shouldn't force a big alloc (#74)
 ERROR_RETRY_SECONDS = int(os.environ.get("SIDEBOARD_ERROR_RETRY_SECONDS", "5"))   # retry faster while errored (#52)
 SCHEMA = 2   # .sideboard/meta.json schema version (migrated forward on load); v2 added sequences (#47)
 
@@ -502,7 +503,7 @@ class Project:
 
     def label(self, number, add=None, remove=None):
         if add:
-            subprocess.run(["gh", "label", "create", add, "-R", self.repo], cwd=SAFE_CWD, capture_output=True, text=True)
+            subprocess.run(["gh", "label", "create", "-R", self.repo, "--", add], cwd=SAFE_CWD, capture_output=True, text=True)
             self._gh("issue", "edit", str(number), "--add-label", add)
         if remove:
             self._gh("issue", "edit", str(number), "--remove-label", remove)
@@ -690,7 +691,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._send(403, '{"ok": false, "error": "forbidden origin"}')
         path = self.path.split("?")[0]
         try:
-            body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or "{}")
+            clen = int(self.headers.get("Content-Length", 0) or 0)
+            if clen > MAX_BODY:
+                return self._send(413, '{"ok": false, "error": "body too large"}')
+            body = json.loads(self.rfile.read(clen) or "{}")
             if path == "/active":
                 p = set_active(body.get("session_title"))
                 return self._send(200, json.dumps({"ok": True, "project": p.title if p else None,
@@ -709,15 +713,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if p is None:
                 return self._send(409, json.dumps({"ok": False, "error": "no active project"}))
             if path == "/api/drop":
-                p.apply_drop(body["number"], body["status"], body.get("order"))
+                p.apply_drop(int(body["number"]), body["status"], body.get("order"))
                 return self._send(200, json.dumps({"ok": True}))
             if path == "/api/create":
                 return self._send(200, json.dumps({"ok": True, "number": p.create(body["title"], body.get("notes", ""))}))
             if path == "/api/edit":
-                p.edit(body["number"], body["title"], body.get("notes", ""))
+                p.edit(int(body["number"]), body["title"], body.get("notes", ""))
                 return self._send(200, json.dumps({"ok": True}))
             if path == "/api/label":
-                p.label(body["number"], body.get("add"), body.get("remove"))
+                p.label(int(body["number"]), body.get("add"), body.get("remove"))
                 return self._send(200, json.dumps({"ok": True}))
             # -- sequences (#47) --
             if path == "/api/seq/create":
@@ -732,7 +736,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 ok = p.seq_dissolve(body["id"])
                 return self._send(200 if ok else 404, json.dumps({"ok": ok}))
             if path == "/api/seq/move":
-                p.seq_move(body["number"], body.get("id"))
+                p.seq_move(int(body["number"]), body.get("id"))
                 return self._send(200, json.dumps({"ok": True}))
             self._send(404, "{}")
         except Exception as e:
