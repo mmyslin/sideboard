@@ -2,7 +2,7 @@
 
 **Your GitHub Issues as a live roadmap board in Claude Code.**
 
-Sideboard shows your repo's GitHub Issues as a live roadmap board that you and [Claude Code](https://claude.com/claude-code) drive together. Quickly log ideas for the backlog, start Claude on the next issue, and reason across your roadmap **and** codebase in context -- no need to jump out of Claude Code to an external board.
+Sideboard shows your repo's GitHub Issues as a live roadmap board that you and [Claude Code](https://claude.com/claude-code) drive together. Quickly log ideas for the backlog, start Claude on the next issue, and reason across your roadmap **and** codebase in context — no need to jump out of Claude Code to an external board.
 
 ![Sideboard: a live roadmap board pinned beside Claude Code chat, with a rainbow of feature tags across Backlog and Done](sideboard.png)
 
