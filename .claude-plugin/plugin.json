@@ -1,12 +1,11 @@
 {
   "name": "sideboard",
   "displayName": "Sideboard",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Your GitHub Issues as a live roadmap board pinned beside Claude Code chat.",
   "author": { "name": "Mark Myslin", "url": "https://github.com/mmyslin" },
   "homepage": "https://github.com/mmyslin/sideboard",
   "repository": "https://github.com/mmyslin/sideboard",
   "license": "MIT",
-  "keywords": ["roadmap", "kanban", "github-issues", "board", "project-management"],
-  "hooks": "./hooks/hooks.json"
+  "keywords": ["roadmap", "kanban", "github-issues", "board", "project-management"]
 }
