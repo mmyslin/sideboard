@@ -381,7 +381,10 @@ function rel(ts) {
   if (h < 24) return h + "h ago";
   return Math.round(h / 24) + "d ago";
 }
-function esc(x) { return (x ?? "").toString().replace(/[&<>]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;" }[c])); }
+// Escapes for BOTH text and double/single-quoted attribute contexts — quotes must
+// be escaped too, or a value like a GitHub label name can break out of a data-*/
+// title attribute and inject an event handler (#63).
+function esc(x) { return (x ?? "").toString().replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
 
 function toast(msg) {
   let t = document.getElementById("toast");
