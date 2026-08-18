@@ -5,7 +5,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/sideboard-active.sh\""
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/sideboard-active.sh\"",
+            "timeout": 8
           }
         ]
       }
@@ -15,7 +16,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/sideboard-active.sh\""
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/sideboard-active.sh\"",
+            "timeout": 8
           }
         ]
       }

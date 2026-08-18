@@ -5,7 +5,9 @@
 # JSON on stdin, extracts the session TITLE (the only reliable project signal in
 # this setup — cwd is always $HOME), and POSTs it to the router so the pinned
 # preview pane follows whatever project you're working in. Fire-and-forget;
-# boots the router if it's down. Never blocks the prompt (always exits 0).
+# boots the router if it's down. Always exits 0 so it never FAILS the prompt;
+# latency is bounded (a readiness wait plus short-timeout curls) and hard-capped
+# by the `timeout` set on the hook in hooks.json (#119).
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # router lives next to this script
 PORT="${SIDEBOARD_PORT:-7777}"                          # keep in step with the router (#102)
 STATE_DIR="$HOME/.claude"
@@ -31,17 +33,58 @@ post() {
     -d "$body" 2>/dev/null
 }
 healthz() { curl -sf -m 1 "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1; }
+
+# PIDs listening on $PORT, one per line. Tries lsof, then ss, then fuser so a box
+# without lsof (slim Linux/Docker) can still reclaim the port instead of looping
+# forever on EADDRINUSE (#118). Echoes "NOTOOL" when none of the three exist.
+port_listener_pids() {
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -ti "tcp:$PORT" -sTCP:LISTEN 2>/dev/null
+  elif command -v ss >/dev/null 2>&1; then
+    ss -H -ltnp "sport = :$PORT" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u
+  elif command -v fuser >/dev/null 2>&1; then
+    fuser "$PORT/tcp" 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$'
+  else
+    echo NOTOOL
+  fi
+}
+
+# Is PID $1 one of OUR router processes? Guards the kill so we never SIGKILL an
+# unrelated service that merely happens to hold the port (#110).
+is_our_router_pid() {
+  case "$(ps -o command= -p "$1" 2>/dev/null)" in
+    *sideboard_router.py*|*vibemap_router.py*|*github_companion.py*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 launch() {
-  # Reclaim the port by killing exactly the process LISTENING on it — never a
-  # name-pattern pkill, which SIGKILLed editors/greps whose argv merely mentioned
-  # the filename and missed routers under a versioned interpreter (#92). The
-  # -sTCP:LISTEN filter is what makes this safe: client sockets (e.g. the Claude
-  # app's own connection to :7777) never match.
-  pids=$(lsof -ti "tcp:$PORT" -sTCP:LISTEN 2>/dev/null)
-  [ -n "$pids" ] && kill -9 $pids 2>/dev/null
+  date +%s >"$STATE_DIR/sideboard-relaunch.stamp"   # advance the throttle for EVERY outcome, incl. the foreign-port refusal below
+  local pids foreign="" pid
+  pids=$(port_listener_pids)
+  if [ "$pids" = "NOTOOL" ]; then
+    echo "[sideboard] no lsof/ss/fuser available to find the port owner; starting router blind (a bind clash will show below)" >>"$STATE_DIR/sideboard-router.log"
+    pids=""
+  fi
+  for pid in $pids; do
+    if is_our_router_pid "$pid"; then
+      kill -9 "$pid" 2>/dev/null           # our own stale/wedged router — safe to reclaim (#92)
+    else
+      foreign="$foreign $pid"
+    fi
+  done
+  if [ -n "$foreign" ]; then
+    # A non-Sideboard process holds the port. NEVER kill it (the old code SIGKILLed
+    # whatever was listening on a failed healthz, taking out unrelated services on
+    # 7777, #110). Back off and tell the user how to move us instead.
+    echo "[sideboard] port $PORT is held by a non-Sideboard process (pid$foreign); refusing to kill it. Set SIDEBOARD_PORT to run Sideboard on another port." >>"$STATE_DIR/sideboard-router.log"
+    return 1
+  fi
   nohup python3 "$HERE/sideboard_router.py" >>"$STATE_DIR/sideboard-router.log" 2>&1 &   # append: racing launches must not truncate each other's log (#105)
-  date +%s >"$STATE_DIR/sideboard-relaunch.stamp"
-  sleep 1
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do   # wait for readiness (~1.5s cap) instead of a flat sleep 1 (#119)
+    healthz && break
+    sleep 0.1
+  done
 }
 
 # Ensure the board server is up BEFORE the title guard, so a titleless session
@@ -65,6 +108,18 @@ resp="$(post)"
 if [ -z "$resp" ] && ! healthz; then
   last=$(cat "$STATE_DIR/sideboard-relaunch.stamp" 2>/dev/null || echo 0)
   [ "$(( $(date +%s) - last ))" -ge 60 ] && { launch; resp="$(post)"; }
+fi
+
+# Router is up (healthz) but /active still got nothing back: almost always a
+# missing/empty auth token, which makes the hook silently useless — the board
+# never follows the active project and nothing says why (#129). Diagnose it once
+# per 60s (its own stamp) rather than on every prompt.
+if [ -z "$resp" ] && healthz && [ ! -s "$STATE_DIR/sideboard-token" ]; then
+  last=$(cat "$STATE_DIR/sideboard-token-warn.stamp" 2>/dev/null || echo 0)
+  if [ "$(( $(date +%s) - last ))" -ge 60 ]; then
+    date +%s >"$STATE_DIR/sideboard-token-warn.stamp"
+    echo "[sideboard] router is up but $STATE_DIR/sideboard-token is missing/empty, so /active is rejected (403) and the board can't follow your project. Restart the router (sideboard-up.sh) to regenerate it." >>"$STATE_DIR/sideboard-router.log"
+  fi
 fi
 
 # Self-heal (#46): a router that's up but can't read ~/Documents (macOS TCC denied
