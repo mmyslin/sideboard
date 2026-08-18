@@ -93,12 +93,12 @@
   "next_color": 7,
   "tag_colors": {
     "distribution": 0,
-    "skills": 1,
-    "sequences": 2,
-    "ui": 3,
+    "enhancement": 6,
     "recommendations": 4,
+    "sequences": 2,
+    "skills": 1,
     "slash commands": 5,
-    "enhancement": 6
+    "ui": 3
   },
   "sequences": [
     {
