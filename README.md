@@ -36,9 +36,10 @@ It doesn't download or execute remote code, phone home, or touch anything beyond
 ## Prerequisites
 
 - **macOS or Linux.** The board server and hooks are bash + `python3`; on Windows you'd need a bash shell (Git Bash or WSL).
-- A git repo with a **GitHub remote and Issues enabled**.
+- A git repo **under `~/Documents/Projects/`** with a **GitHub remote and Issues enabled**. The router discovers projects in that root; to keep repos elsewhere, point it at them with `SIDEBOARD_PROJECTS_ROOT=/path` (or add a title→dir entry to `~/.claude/sideboard-projects.json`).
 - **`gh`** installed and authenticated (`gh auth login`).
 - **`python3`** on PATH (runs the local board server).
+- **`curl`** on PATH (the hook and launcher talk to the local server).
 
 ## Install
 
