@@ -54,7 +54,9 @@ def is_ours(group):
 hooks = s.setdefault("hooks", {})
 for event in ("SessionStart", "UserPromptSubmit"):
     groups = [g for g in hooks.get(event, []) if not is_ours(g)]   # drop our prior group(s)
-    groups.append({"hooks": [{"type": "command", "command": cmd}]})
+    # Quote the path (like the plugin's hooks.json does): the command is run by a
+    # shell, and an unquoted $HOME/CLAUDE_SKILLS_DIR with a space word-splits (#103).
+    groups.append({"hooks": [{"type": "command", "command": f'"{cmd}"'}]})
     hooks[event] = groups
 
 os.makedirs(os.path.dirname(settings_path), exist_ok=True)

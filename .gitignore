@@ -1,5 +1,4 @@
 .DS_Store
-roadmap.json
 .sideboard/*.bak
 __pycache__/
 *.pyc

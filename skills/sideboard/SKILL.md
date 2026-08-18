@@ -13,9 +13,14 @@ pane next to chat for an always-visible, auto-updating roadmap.
 There is **one mode: GitHub.** Manage the roadmap with `gh`, not a local file.
 
 ## Prerequisites
-- A git repo with a GitHub remote, **Issues enabled**.
+- A git repo **under `~/Documents/Projects/`** with a GitHub remote, **Issues
+  enabled**. The router only discovers projects in that root — for a repo
+  elsewhere, either set `SIDEBOARD_PROJECTS_ROOT=/path` for the router or add a
+  title→dir entry to `~/.claude/sideboard-projects.json`. Do NOT bootstrap a
+  repo outside the root without one of those overrides: the sidecar commit will
+  succeed but the board will never show the project.
 - `gh` installed and authenticated (`gh auth login`).
-- `python3` on PATH (runs the local board server).
+- `python3` and `curl` on PATH (run and talk to the local board server).
 
 ## Data model
 - **Each roadmap card is a GitHub issue.** `#N` = the issue number.
@@ -41,6 +46,10 @@ Keep the board honest during normal work, using `gh`:
 - Add/remove a feature tag → `gh issue edit <N> --add-label "<tag>"` / `--remove-label`.
 - An open item is already implemented, or duplicates another → the **`/sideboard:roadmap-cleanup`** command flags it with code evidence and closes/merges it on your OK.
 - Need fresh items (or a board from scratch on a new project) → the **`/sideboard:roadmap-suggest`** command mines the repo (TODOs, stubs, churn, gaps, unbuilt promises) and seeds issues on your OK.
+
+(The `/sideboard:*` commands ship with the **plugin** install only. Under the
+legacy `install.sh` flow they don't exist — do the equivalent directly with `gh`
+and the router API instead of invoking them.)
 
 Keep titles terse — this is a glanceable board, not a spec. Mention roadmap
 changes in one short line; don't derail the main task. **Do not create or edit a

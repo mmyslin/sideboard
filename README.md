@@ -4,7 +4,7 @@
 
 Sideboard shows your repo's GitHub Issues as a live roadmap board that you and [Claude Code](https://claude.com/claude-code) drive together. Quickly log ideas for the backlog, start Claude on the next issue, and reason across your roadmap **and** codebase in context — no need to jump out of Claude Code to an external board.
 
-<img width="3300" height="1771" alt="sideboard" src="https://github.com/user-attachments/assets/fa8e6c52-b8d9-4615-9c85-79ada1c75024" />
+<img width="3300" height="1771" alt="sideboard" src="sideboard.png" />
 
 Claude Code has no API for custom side panels, but its desktop app lets you pin any local web page in the **preview pane** next to chat. Sideboard is that page: a zero-dependency HTML board whose source of truth is your **GitHub Issues**. A companion **skill** teaches Claude to keep the board current with `gh` during normal conversation — filing what you decide to build, moving cards to *In Progress*, closing them *Done* when work lands. It refreshes on its own — board edits show instantly, and changes made with `gh` directly appear on the next GitHub sync.
 
@@ -29,7 +29,8 @@ Claude Code plugins run with your user privileges, so it's worth knowing exactly
 
 - **A localhost-only HTTP server** (`scripts/sideboard_router.py`) bound to `127.0.0.1:7777`. It never listens on a public interface and makes no outbound network calls of its own.
 - **`gh` on your behalf** — `gh issue list/create/edit/close` and `gh label` — to read and update the roadmap. All GitHub access goes through your already-authenticated `gh`; the plugin stores no tokens or credentials.
-- **Two hooks** — on session start and on each prompt, a small bash script (`scripts/sideboard-active.sh`) tells the running server which project is active. It's bounded (a ~1s timeout) and always exits 0, so it never fails your prompt.
+- **Two hooks** — on session start and on each prompt, a small bash script (`scripts/sideboard-active.sh`) tells the running server which project is active. It always exits 0, so it never *fails* your prompt. Timing: normally one ~1s-capped local request; when the server is down, the hook also restarts it — killing whatever process holds the port (matched strictly by *listening* on it) and launching a fresh one — which can block a prompt for ~3–4s, at most once per 60s.
+- **Local state under `~/.claude`** — a write-auth token (`sideboard-token`, readable only by you), a title→project registry (`sideboard-projects.json`), a server log, and two relaunch-throttle stamps. Nothing leaves your machine.
 
 It doesn't download or execute remote code, phone home, or touch anything beyond your repos' issues and the committed `.sideboard/meta.json`.
 
@@ -72,18 +73,24 @@ In any repo that meets the prerequisites, ask Claude to **"set up the roadmap"**
 
 ## Uninstall
 
-`/plugin uninstall sideboard@sideboard` removes the plugin, but the board **server keeps running** — the `:7777` router was started by the session hook and nothing signals it to stop. Shut it down with:
+`/plugin uninstall sideboard@sideboard` removes the plugin, but the board **server keeps running** — the `:7777` router was started by the session hook and nothing signals it to stop. Shut it down by killing exactly the process listening on the port (don't `pkill` by file name — that can hit an editor viewing the source):
 
 ```bash
-pkill -f sideboard_router.py
+lsof -ti tcp:7777 -sTCP:LISTEN | xargs kill
 ```
 
-(The router writes no state of its own; your roadmap lives in GitHub Issues and the committed `.sideboard/meta.json`, so stopping it loses nothing.)
+Your roadmap lives in GitHub Issues and the committed `.sideboard/meta.json`, so stopping the server loses nothing. To remove the local state Sideboard kept under `~/.claude` (auth token, title→project registry, server log, throttle stamps):
+
+```bash
+rm -f ~/.claude/sideboard-token ~/.claude/sideboard-projects.json ~/.claude/sideboard-router.log ~/.claude/sideboard-relaunch.stamp ~/.claude/sideboard-heal.stamp
+```
+
+(Repos keep their committed `.sideboard/meta.json`; if a corrupt or migrated sidecar was ever backed up you may also find `meta.json.*.bak` files beside it — safe to delete.)
 
 ## Notes
 
 - The board is served on `127.0.0.1` (localhost only). Don't bind it to `0.0.0.0`.
-- `.sideboard/meta.json` is meant to be **committed** — it carries your lane split, order, tag colors, and sequences. The board HTML itself is a dev tool; a gitignored per-project copy is fine.
+- `.sideboard/meta.json` is meant to be **committed** — it carries your lane split, order, tag colors, and sequences. The board HTML is served by the router from the plugin's own directory; nothing needs to be copied into your repos.
 - Requires the Claude Code desktop app (the one with the preview pane) to pin the board beside chat. Any browser works too — it's just a local web page.
 
 ## License
