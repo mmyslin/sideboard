@@ -360,6 +360,10 @@ let lastRaw = "";
 // Kept in the URL (?project=<id>) so each pane is independent — localStorage is
 // shared across same-origin panes and would switch them all together. (#43)
 let pinnedId = new URLSearchParams(location.search).get("project") || null;
+let renderedProjectId = null;   // id of the project the last poll actually rendered (#58)
+// Route writes to the project this pane is SHOWING, not just whichever is active —
+// else a pinned/lagging pane mutates the wrong repo (#58). Pin wins; else the last poll's id.
+const currentProjectId = () => pinnedId || renderedProjectId;
 const expanded = new Set();   // item ids whose description is expanded (persists across re-renders)
 const collapsed = new Set();  // lane keys collapsed to just their header (#14; persists across re-renders)
 const grow = {};              // per-lane flex-grow, set by dragging resizers (persists across re-renders)
@@ -414,8 +418,8 @@ function openEditor(mode, data) {
     if (!title) { titleEl.focus(); return; }
     const url = mode === "create" ? "/api/create" : "/api/edit";
     const payload = mode === "create"
-      ? { title, notes: notesEl.value }
-      : { number: data.number, title, notes: notesEl.value };
+      ? { title, notes: notesEl.value, project: currentProjectId() }
+      : { number: data.number, title, notes: notesEl.value, project: currentProjectId() };
     close();
     toast(mode === "create" ? "Adding…" : "Saving…");
     fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
@@ -435,7 +439,7 @@ function seqPill(seq) {
 }
 
 function apiPost(url, body) {
-  return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+  return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, project: currentProjectId() }) })
     .then(r => { if (!r.ok) throw new Error(r.status); })
     .catch(() => toast("Not saved — is the router running?"));
 }
@@ -533,7 +537,7 @@ function openTags(card) {
   const input = m.querySelector("input");
   const post = (payload) => fetch("/api/label", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(Object.assign({ number }, payload)),
+    body: JSON.stringify(Object.assign({ number, project: currentProjectId() }, payload)),
   }).then(r => { if (!r.ok) throw new Error(r.status); })
     .catch(() => toast("Tag change not saved — is the board server running?"));
   const renderChips = () => {
@@ -698,6 +702,7 @@ async function poll() {
     const raw = await res.text();
     const data = JSON.parse(raw);
     latestData = data;   // keep fresh for the sequence modal (#50)
+    if (data.project_id !== undefined) renderedProjectId = data.project_id;   // route writes here (#58)
     if (window.__BV && data.board_version && data.board_version !== window.__BV) {
       location.replace(location.pathname + "?_bv=" + data.board_version + pinQ); return;   // stale HTML -> reload fresh, keep the pin
     }
@@ -855,7 +860,7 @@ document.getElementById("board").addEventListener("click", (e) => {
     fetch("/api/drop", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ number, status, order }),
+      body: JSON.stringify({ number, status, order, project: currentProjectId() }),
     }).then(r => { if (!r.ok) throw new Error(r.status); })
       .catch(() => toast("Move not saved — is the board server running?"));
   });

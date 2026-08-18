@@ -394,6 +394,7 @@ class Project:
             # any other error blanks the board with the reason (#52).
             if self.error and self.error != _NET_MSG:
                 return {"updated_at": self.synced_at or _now(), "project": self.title,
+                        "project_id": os.path.basename(self.path),
                         "mode": "github", "board_version": bv, "items": [], "error": self.error}
             meta = self._load_meta()
             by_num = {str(i["number"]): i for i in self.issues}
@@ -416,6 +417,7 @@ class Project:
             # updated_at is the last SYNC time, not now — so the polled payload is byte-identical
             # between syncs and the board doesn't re-render (and reset scroll) every poll (#42)
             out = {"updated_at": self.synced_at or _now(), "project": self.title, "mode": "github",
+                   "project_id": os.path.basename(self.path),
                    "board_version": bv, "items": items,
                    "sequences": [{"id": s["id"], "title": s["title"], "items": [int(x) for x in s["items"]]}
                                  for s in meta["sequences"]]}
@@ -639,7 +641,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 p = set_active(body.get("session_title"))
                 return self._send(200, json.dumps({"ok": True, "project": p.title if p else None,
                                                     "dir": p.path if p else None, "access_ok": access_ok()}))
-            p = STATE["active"]
+            # Route the write to the project the pane is SHOWING (its rendered/pinned
+            # id), not just whichever is active — a pinned/lagging pane must not mutate
+            # the wrong repo (#58). Fall back to the active project only when no id is sent.
+            pid = body.get("project")
+            if pid:
+                d = project_by_id(pid)
+                if not d:
+                    return self._send(404, json.dumps({"ok": False, "error": "unknown project"}))
+                p = get_project(d)
+            else:
+                p = STATE["active"]
             if p is None:
                 return self._send(409, json.dumps({"ok": False, "error": "no active project"}))
             if path == "/api/drop":
