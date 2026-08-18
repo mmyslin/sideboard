@@ -13,11 +13,16 @@ is **GitHub-only** — there is no `roadmap.json` / local-file mode.
   when working: starting a sequenced issue with an unfinished predecessor → check in
   first; closing one → suggest the next. See `skill/SKILL.md` → "Acting on a sequenced
   issue".
-- **Run the board:** `./sideboard-up.sh` — starts the **router**
-  (`sideboard_router.py`) on :7777, which follows the *active* project and serves
-  its board. Then open the pane once per project (or use `/roadmap`).
+- **Repo layout is the plugin layout (#12):** `commands/` (the `sideboard:`
+  slash commands), `skills/sideboard/SKILL.md`, `scripts/` (router + shell
+  scripts), `hooks/hooks.json`, and `.claude-plugin/{plugin,marketplace}.json`.
+  `install.sh` is the legacy installer; it copies out of `skills/`+`scripts/`.
+- **Run the board:** `scripts/sideboard-up.sh` — starts the **router**
+  (`scripts/sideboard_router.py`) on :7777, which follows the *active* project and
+  serves its board. Then open the pane once per project (or use `/sideboard:roadmap`).
+  Under the plugin the `SessionStart` hook launches it for you.
 - **Multi-project / auto-follow (#35):** one router serves ALL projects. A global
-  Claude Code hook (`sideboard-active.sh`, on SessionStart + UserPromptSubmit)
+  Claude Code hook (`scripts/sideboard-active.sh`, on SessionStart + UserPromptSubmit)
   POSTs the session TITLE to the router, which maps title→project dir
   (`~/.claude/sideboard-projects.json`, token-matched, editable) and switches the
   served board. cwd is useless here (always $HOME) — title is the only signal.

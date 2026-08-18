@@ -10,11 +10,11 @@ Claude Code has no API for custom side panels, but its desktop app lets you pin 
 
 ## Code-aware roadmap skills
 
-Because Claude holds your roadmap **and** your codebase in context, Sideboard ships commands that reason across both — and they always propose first, never acting until you accept:
+Because Claude holds your roadmap **and** your codebase in context, Sideboard ships commands that reason across both — and they always propose first, never acting until you accept. Installed as a plugin, the commands are namespaced `sideboard:`:
 
-- **`/roadmap-suggest`** — mines the repo for work the board is missing (TODOs, stubs, churn-heavy files, gaps, features the docs promise) and offers them as a checklist. On a brand-new project it bootstraps a starter backlog from scratch.
-- **`/roadmap-sequence`** — finds dependency chains: report or assemble specific issues, or scan the board and recommend build-orders in a chat carousel. The board draws each chain as a connector down the lane.
-- **`/roadmap-cleanup`** — flags issues that are already done (confirmed against the actual code) or redundant, and closes/merges them on your OK.
+- **`/sideboard:roadmap-suggest`** — mines the repo for work the board is missing (TODOs, stubs, churn-heavy files, gaps, features the docs promise) and offers them as a checklist. On a brand-new project it bootstraps a starter backlog from scratch.
+- **`/sideboard:roadmap-sequence`** — finds dependency chains: report or assemble specific issues, or scan the board and recommend build-orders in a chat carousel. The board draws each chain as a connector down the lane.
+- **`/sideboard:roadmap-cleanup`** — flags issues that are already done (confirmed against the actual code) or redundant, and closes/merges them on your OK.
 
 ## How it works
 
@@ -31,19 +31,30 @@ Because Claude holds your roadmap **and** your codebase in context, Sideboard sh
 
 ## Install
 
+Sideboard is a **Claude Code plugin**. From inside Claude Code:
+
+```
+/plugin marketplace add mmyslin/sideboard
+/plugin install sideboard@sideboard
+```
+
+That's it — no `git clone`, no `settings.json` editing. The plugin ships the skill, the four `sideboard:` commands, the board, the router, and the activity hook; the `SessionStart` hook starts the board server for you. Start (or restart) a session and the commands are available in every project.
+
+<details>
+<summary>Legacy install (without the plugin)</summary>
+
 ```bash
 git clone https://github.com/mmyslin/sideboard.git
 cd sideboard
 ./install.sh
 ```
 
-Installs the skill, board, router, commands, and activity hook into `~/.claude/skills/sideboard/`, and wires the hook into your settings. Start a new Claude Code session and `/roadmap` (plus the code-aware commands above) are available in every project.
-
-> **Distribution:** the intended path is a one-command **Claude Code plugin** (issue [#12](https://github.com/mmyslin/sideboard/issues/12)) — `/plugin install …` instead of clone-and-run, with no `settings.json` editing. This README will be reframed around the plugin flow when that ships.
+Copies the skill, board, router, and activity hook into `~/.claude/skills/sideboard/` and merges the hook into your `settings.json`. Kept for users not on the plugin flow; the plugin is the supported path.
+</details>
 
 ## Use
 
-In any repo that meets the prerequisites, ask Claude to **"set up the roadmap"** (or run `/roadmap`). Claude bootstraps the sidecar so the router discovers the project, starts the board (`./sideboard-up.sh`), and opens `http://127.0.0.1:7777/roadmap-board.html` in the preview pane. Drag the pane beside your chat and **save the layout** — from then on, as you and Claude decide what to build and as `gh issue` changes land, the board keeps itself current. Re-open it any time with `/roadmap`.
+In any repo that meets the prerequisites, ask Claude to **"set up the roadmap"** (or run `/sideboard:roadmap`). Claude bootstraps the sidecar so the router discovers the project, and opens `http://127.0.0.1:7777/roadmap-board.html` in the preview pane (the `SessionStart` hook already has the board server running). Drag the pane beside your chat and **save the layout** — from then on, as you and Claude decide what to build and as `gh issue` changes land, the board keeps itself current. Re-open it any time with `/sideboard:roadmap`.
 
 ## Notes
 

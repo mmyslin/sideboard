@@ -69,8 +69,11 @@ One short line either way; don't derail the task.
    `mkdir -p .sideboard && printf '{"schema": 1}\n' > .sideboard/meta.json` — then
    commit it. The router reconciles it from your existing issues on first sync
    (all open issues start in Backlog; reorder/split by dragging on the board).
-3. Start the board server: run `~/.claude/skills/sideboard/sideboard-up.sh` (starts
-   the router on :7777, following the active project).
+3. Start the board server. It normally comes up on its own — the plugin's
+   SessionStart hook runs `sideboard-up.sh` for you — so it's usually already
+   serving :7777. If it isn't, run the bundled `sideboard-up.sh` launcher
+   (plugin: `${CLAUDE_PLUGIN_ROOT}/scripts/sideboard-up.sh`; legacy install:
+   `~/.claude/skills/sideboard/sideboard-up.sh`). It follows the active project.
 4. Open `http://127.0.0.1:7777/roadmap-board.html` in the preview pane and dock
    it beside chat.
 

@@ -2,6 +2,12 @@
 # Install Sideboard for Claude Code: the board renderer, the multi-project router,
 # the /sideboard skill, and the global activity hook that makes the preview pane
 # follow whatever project you're working in (#35, #36). Re-run any time to update.
+#
+# LEGACY installer. The supported path is now the Claude Code plugin (#12):
+#   /plugin marketplace add mmyslin/sideboard
+#   /plugin install sideboard@sideboard
+# This script remains for users not on the plugin flow; it copies the same files
+# out of the plugin layout (skills/, scripts/) into ~/.claude/skills/sideboard/.
 set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,11 +19,11 @@ SETTINGS="${CLAUDE_SETTINGS:-$HOME/.claude/settings.json}"
 rm -rf "${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}/vibemap"
 
 mkdir -p "$DEST"
-cp "$SRC/skill/SKILL.md"       "$DEST/SKILL.md"
-cp "$SRC/roadmap-board.html"   "$DEST/roadmap-board.html"
-cp "$SRC/sideboard_router.py"    "$DEST/sideboard_router.py"
-cp "$SRC/sideboard-active.sh"    "$DEST/sideboard-active.sh"
-cp "$SRC/sideboard-up.sh"        "$DEST/sideboard-up.sh"
+cp "$SRC/skills/sideboard/SKILL.md"   "$DEST/SKILL.md"
+cp "$SRC/roadmap-board.html"          "$DEST/roadmap-board.html"
+cp "$SRC/scripts/sideboard_router.py" "$DEST/sideboard_router.py"
+cp "$SRC/scripts/sideboard-active.sh" "$DEST/sideboard-active.sh"
+cp "$SRC/scripts/sideboard-up.sh"     "$DEST/sideboard-up.sh"
 chmod +x "$DEST/sideboard-active.sh" "$DEST/sideboard-up.sh" "$DEST/sideboard_router.py"
 echo "✅ Installed Sideboard files to: $DEST"
 

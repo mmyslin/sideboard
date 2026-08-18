@@ -1,0 +1,12 @@
+{
+  "name": "sideboard",
+  "description": "Sideboard — your GitHub Issues as a live roadmap board inside Claude Code.",
+  "owner": { "name": "Mark Myslin", "url": "https://github.com/mmyslin" },
+  "plugins": [
+    {
+      "name": "sideboard",
+      "description": "Your GitHub Issues as a live board in Claude Code.",
+      "source": { "source": "github", "repo": "mmyslin/sideboard" }
+    }
+  ]
+}

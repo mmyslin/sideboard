@@ -20,7 +20,17 @@ import json, os, re, sys, shutil, subprocess, threading, time, datetime, uuid, h
 
 HOME = os.path.expanduser("~")
 ROUTER_DIR = os.path.dirname(os.path.abspath(__file__))
-BOARD_HTML = os.path.join(ROUTER_DIR, "roadmap-board.html")
+# Board HTML location, most-specific first: explicit env override, next to the
+# router (legacy flat install: install.sh copies both into ~/.claude/skills/...),
+# then one level up (plugin layout: router lives in scripts/, board at plugin root).
+BOARD_HTML = next(
+    (p for p in (
+        os.environ.get("SIDEBOARD_BOARD_HTML"),
+        os.path.join(ROUTER_DIR, "roadmap-board.html"),
+        os.path.join(os.path.dirname(ROUTER_DIR), "roadmap-board.html"),
+    ) if p and os.path.exists(p)),
+    os.path.join(ROUTER_DIR, "roadmap-board.html"),
+)
 REGISTRY = os.path.join(HOME, ".claude", "sideboard-projects.json")
 PROJECTS_ROOT = os.path.abspath(os.environ.get(
     "SIDEBOARD_PROJECTS_ROOT", os.path.join(HOME, "Documents", "Projects")))
