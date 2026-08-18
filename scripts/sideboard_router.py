@@ -134,9 +134,15 @@ def _candidate_dirs():
 
 
 def resolve_dir(title):
-    """Map a session title to a project dir. Registry wins; else best token
-    overlap with a dir name (>=50% of the dir's tokens present in the title);
-    the resolved pair is cached to the registry (user-editable for overrides)."""
+    """Map a session title to a project dir. Registry wins (user-editable override);
+    else the dir whose name tokens best overlap the title, requiring a STRICT
+    MAJORITY of the dir's tokens (>0.5) and breaking ties toward the more-specific
+    dir (more matched tokens). Only full-coverage (1.0) matches are cached; fuzzier
+    ones re-resolve each session so an ambiguous guess never becomes permanent (#62).
+
+    The strict-majority rule fixes two mis-bindings: a single-token dir (`sideboard`)
+    only matches on a full hit, not as a subset of `sideboard-docs`; and a generic
+    token (`tracker`) no longer half-matches any title mentioning it."""
     if not title:
         return None
     reg = _load_registry()
@@ -146,19 +152,24 @@ def resolve_dir(title):
     tt = _tokens(title)
     if not tt:
         return None
-    best, best_score = None, 0.0
+    best = None                            # ((score, overlap), dir)
     for d in _candidate_dirs():
         dt = _tokens(os.path.basename(d))
         if not dt:
             continue
-        score = len(tt & dt) / len(dt)     # fraction of the dir's name tokens found in the title
-        if score > best_score:
-            best, best_score = d, score
-    if best and best_score >= 0.5:
-        reg[title] = best
+        overlap = len(tt & dt)
+        score = overlap / len(dt)          # fraction of the dir's name tokens found in the title
+        if score <= 0.5:                   # require a strict majority, not just half
+            continue
+        cand = ((score, overlap), d)
+        if best is None or cand[0] > best[0]:   # higher score, then more matched tokens (specificity)
+            best = cand
+    if best is None:
+        return None
+    if best[0][0] >= 1.0:                  # persist only confident, full-coverage matches
+        reg[title] = best[1]
         _save_registry(reg)
-        return best
-    return None
+    return best[1]
 
 
 def project_name(d):
