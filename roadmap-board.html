@@ -365,6 +365,9 @@ let renderedProjectId = null;   // id of the project the last poll actually rend
 // else a pinned/lagging pane mutates the wrong repo (#58). Pin wins; else the last poll's id.
 const currentProjectId = () => pinnedId || renderedProjectId;
 let cancelDrag = () => {};      // replaced by enableDnD; poll() calls it on a project flip (#80)
+let dragging = false;           // a column drag is in flight — re-renders are deferred (#88)
+let pendingRender = null;       // data that arrived mid-drag, applied at dragend (#88)
+let pollSeq = 0;                // request generation — stale responses are discarded (#87)
 const expanded = new Set();   // item ids whose description is expanded (persists across re-renders)
 const collapsed = new Set();  // lane keys collapsed to just their header (#14; persists across re-renders)
 const grow = {};              // per-lane flex-grow, set by dragging resizers (persists across re-renders)
@@ -491,10 +494,10 @@ function openSequence(seqId) {
     chain.innerHTML = order.map((ref, i) => {
       const it = byRef[ref] || {};
       const st = it.status === "done" ? "done" : it.status === "in_progress" ? "wip" : "todo";
-      return `<div class="sq-row${st === "done" ? " done" : ""}" draggable="true" data-ref="${ref}">
+      return `<div class="sq-row${st === "done" ? " done" : ""}" draggable="true" data-ref="${esc(ref)}">
         <span class="sq-grip" aria-hidden="true">⠿</span>
         <span class="sq-pos">${i + 1}</span>
-        <span class="sq-ref">#${ref}</span>
+        <span class="sq-ref">#${esc(ref)}</span>
         <span class="sq-name">${esc(it.title || "(unknown)")}</span>
         <span class="sq-dot ${st}"></span>
       </div>`;
@@ -521,7 +524,13 @@ function openSequence(seqId) {
     e.preventDefault();
     const next = [...chain.querySelectorAll(".sq-row")].map(r => Number(r.dataset.ref));
     if (next.join() === order.join()) return;   // no change
-    order = next;
+    // Merge with the LIVE membership, not the open-time snapshot — the chain may
+    // have gained/lost items (e.g. /api/seq/move from chat) while the modal was
+    // open, and a full-replace of the stale list would silently revert that (#101).
+    const live = ((latestData && latestData.sequences) || []).find(s => s.id === seqId);
+    const liveItems = live ? live.items.map(Number) : order;
+    const kept = next.filter(n => liveItems.includes(n));
+    order = kept.concat(liveItems.filter(n => !kept.includes(n)));
     drawChain();
     apiPost("/api/seq/update", { id: seqId, items: order }, proj);
   });
@@ -707,11 +716,13 @@ function setStatus(state, data) {
 }
 
 async function poll() {
+  const seq = ++pollSeq;
   try {
     const pinQ = pinnedId ? "&project=" + encodeURIComponent(pinnedId) : "";
     const res = await fetch("/roadmap.json?_=" + Date.now() + pinQ, { cache: "no-store" });   // absolute: works even if the pane URL has a stale path (#67)
     if (!res.ok) throw new Error(res.status);
     const raw = await res.text();
+    if (seq !== pollSeq) return;   // superseded — a slow response must not repaint over a newer one (#87)
     const data = JSON.parse(raw);
     latestData = data;   // keep fresh for the sequence modal (#50)
     if (data.project_id !== undefined) {
@@ -731,7 +742,12 @@ async function poll() {
     // router re-stamps every sync (~45s) and would otherwise force a needless
     // re-render (and scroll jump) even when nothing changed (#42)
     const sig = JSON.stringify({ p: data.project, m: data.mode, items: data.items, e: data.error });
-    if (sig !== lastRaw) { lastRaw = sig; render(data); }
+    if (sig !== lastRaw) {
+      lastRaw = sig;
+      // Never rebuild the DOM under an active drag — the delegated dragover would
+      // re-attach the detached card into the fresh tree, duplicating it (#88).
+      if (dragging) pendingRender = data; else render(data);
+    }
     if (data.error) { setStatus(data.error_offline ? "offline" : "err", data); return; }
     const age = data.updated_at ? Date.now() - new Date(data.updated_at).getTime() : 0;
     setStatus(age > 3600000 ? "stale" : "ok", data);
@@ -844,7 +860,7 @@ document.getElementById("board").addEventListener("click", (e) => {
   let dragEl = null;
   let dragProj = null;   // project captured at dragstart, sent at dragend (#80)
   // Let poll() abort a drag whose project just changed under it (#80).
-  cancelDrag = () => { if (dragEl) { dragEl.classList.remove("dragging"); dragEl = null; dragProj = null; } };
+  cancelDrag = () => { if (dragEl) { dragEl.classList.remove("dragging"); dragEl = null; dragProj = null; } dragging = false; };
 
   const dragAfter = (bodyEl, y) => {
     for (const c of bodyEl.querySelectorAll(".card:not(.dragging)")) {
@@ -859,6 +875,7 @@ document.getElementById("board").addEventListener("click", (e) => {
     if (!card || e.target.closest(".card-actions") || e.target.closest(".seq-pill")) { e.preventDefault(); return; }
     dragEl = card;
     dragProj = currentProjectId();
+    dragging = true;   // defer re-renders until this drag ends (#88)
     card.classList.add("dragging");
     e.dataTransfer.effectAllowed = "move";
     try { e.dataTransfer.setData("text/plain", card.dataset.ref); } catch (_) {}
@@ -875,12 +892,16 @@ document.getElementById("board").addEventListener("click", (e) => {
   });
 
   board.addEventListener("dragend", () => {
-    if (!dragEl) return;
+    dragging = false;
+    // A content change that arrived mid-drag was deferred (#88) — apply it now,
+    // AFTER reading the drop position out of the DOM below.
+    const flush = () => { if (pendingRender) { const d = pendingRender; pendingRender = null; render(d); } };
+    if (!dragEl) { flush(); return; }
     const card = dragEl, proj = dragProj;
     dragEl = null; dragProj = null;
     card.classList.remove("dragging");
     const status = card.closest(".col") && card.closest(".col").dataset.key;
-    if (!status) return;
+    if (!status) { flush(); return; }
     const number = Number(card.dataset.ref);
     const order = [...board.querySelectorAll(".card")].map(c => Number(c.dataset.ref));
     fetch("/api/drop", {
@@ -889,6 +910,7 @@ document.getElementById("board").addEventListener("click", (e) => {
       body: JSON.stringify({ number, status, order, project: proj }),   // captured at dragstart (#80)
     }).then(r => { if (!r.ok) throw new Error(r.status); })
       .catch(() => toast("Move not saved — is the board server running?"));
+    flush();
   });
 })();
 
