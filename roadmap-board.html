@@ -565,7 +565,9 @@ function render(data) {
   document.getElementById("project").textContent = data.project || "Roadmap";
   document.title = "Roadmap";   // fixed title — project can change under a single pane (#37 reverted)
   const board = document.getElementById("board");
-  board.classList.toggle("has-sequences", ((data.sequences && data.sequences.length) || 0) > 0);   // #53: roomy gutter only with sequences
+  const _blRefs = new Set((data.items || []).filter(i => i.status === "backlog").map(i => i.ref));   // #53: roomy only when a
+  board.classList.toggle("has-sequences",                                                            // Backlog connector is actually drawn (>=2 members in Backlog)
+    (data.sequences || []).some(s => (s.items || []).filter(n => _blRefs.has(n)).length >= 2));
   const items = Array.isArray(data.items) ? data.items : [];
   // snapshot scroll (each lane scrolls independently, plus the page) so a
   // re-render restores position instead of jumping to the top (#42)
