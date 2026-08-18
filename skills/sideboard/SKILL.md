@@ -33,7 +33,9 @@ There is **one mode: GitHub.** Manage the roadmap with `gh`, not a local file.
 ## Updating the roadmap (do this proactively, without being asked)
 Keep the board honest during normal work, using `gh`:
 - User decides to build something → `gh issue create --title "…" [--body "…"]` (lands in Backlog).
-- You start on an item → move it to In Progress (drag on the board, or it's the sidecar `status`; the board's move does this for you).
+- You start on an item → move it to In Progress via the router API (the lane split lives in the sidecar, not GitHub — never hand-edit `.sideboard/meta.json`, it races the sync):
+  `curl -s -X POST http://127.0.0.1:7777/api/drop -H 'Content-Type: application/json' -H "X-Sideboard-Token: $(cat ~/.claude/sideboard-token)" -d '{"project":"<PROJECT>","number":<N>,"status":"in_progress"}'`
+  (status `backlog` moves it back; see "Calling the router API" below for `<PROJECT>`.)
 - Work lands / user confirms done → `gh issue close <N>`. Reopen with `gh issue reopen <N>`.
 - Scope/notes change → `gh issue edit <N> --title/--body`.
 - Add/remove a feature tag → `gh issue edit <N> --add-label "<tag>"` / `--remove-label`.
@@ -44,6 +46,17 @@ Keep titles terse — this is a glanceable board, not a spec. Mention roadmap
 changes in one short line; don't derail the main task. **Do not create or edit a
 `roadmap.json`** — local-file mode no longer exists.
 
+## Calling the router API
+Two rules for every `POST` to the router (`/api/*`):
+- **Always send `"project"`** — the repo's dir basename if it lives under
+  `~/Documents/Projects/`, else its full path. Omitting it falls back to the
+  *active* project, which can change between your read and your write and would
+  mutate another repo's board.
+- **Always send the auth header** — `-H "X-Sideboard-Token: $(cat ~/.claude/sideboard-token)"`.
+  Writes without it are rejected (403).
+
+Reads (`/roadmap.json?project=<PROJECT>`, URL-encoded) need no token.
+
 ## Referring to cards by number
 `#N` means the **GitHub issue number** — `#10`, "do #10", "move #7 to in
 progress", "close out #3". Resolve it to issue N and act (implement it, change
@@ -51,7 +64,7 @@ status, edit, or just answer). If no issue N exists, say so plainly rather than
 guessing at the closest match.
 
 ## Sequences
-A **sequence** is an ordered chain of **≥2** Backlog/In-Progress issues (each issue in **0 or 1**) with a short title — a build-order / dependency hint. It lives in the sidecar; the board shows a linked-rings pill on chained cards (click it for a drag-reorderable modal), draws a bracket connector down the chain in the Backlog lane, and keeps a chain's cards consecutive. Manage via the router API (POST JSON, instant): `/api/seq/create {items,title}`, `/api/seq/update {id,title?,items?}`, `/api/seq/move {number,id|null}`, `/api/seq/dissolve {id}`. Read current chains from `roadmap.json` (`sequences` + each item's `sequence`).
+A **sequence** is an ordered chain of **≥2** Backlog/In-Progress issues (each issue in **0 or 1**) with a short title — a build-order / dependency hint. It lives in the sidecar; the board shows a linked-rings pill on chained cards (click it for a drag-reorderable modal), draws a bracket connector down the chain in the Backlog lane, and keeps a chain's cards consecutive. Manage via the router API (POST JSON, instant; see "Calling the router API" below for the required `project` field and auth header): `/api/seq/create {project,items,title}`, `/api/seq/update {project,id,title?,items?}`, `/api/seq/move {project,number,id|null}`, `/api/seq/dissolve {project,id}`. Read current chains from `roadmap.json?project=<PROJECT>` (`sequences` + each item's `sequence`).
 
 Propose **dependency-grounded** orderings (code-aware — reason from what the code/issues actually are, not just titles) and let the user **accept / reject / edit** before writing. The **`/sideboard:roadmap-sequence <N…>`** command drives the targeted modes: one number → report its current chain + propose a fit; several numbers → assemble them into one chain in the order that makes technical sense (defer to the user on whether they belong together).
 

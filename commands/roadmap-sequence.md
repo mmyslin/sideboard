@@ -3,11 +3,11 @@ description: Report or assemble a Sideboard sequence for the given issue numbers
 ---
 Handle a Sideboard **sequence** subcommand for arguments: `$ARGUMENTS`.
 
-A *sequence* is an ordered chain of **≥2** Backlog/In-Progress issues with a short title; each issue is in **0 or 1** sequences. Read state from `http://127.0.0.1:7777/roadmap.json` — `sequences` is the array of existing chains `{id,title,items:[N,…]}`, and each item's `sequence` field is its current membership. Persist via the router API (POST JSON; sidecar-only and instant — the board's pill/modal reflects it on the next 2s poll):
-- create: `POST /api/seq/create {"items":[N,…],"title":"…"}` → `{id}` (needs ≥2 existing issues; pulls any listed issue out of its old chain)
-- rename / reorder: `POST /api/seq/update {"id":"seq-…","title"?:"…","items"?:[N,…]}`
-- add / remove a member: `POST /api/seq/move {"number":N,"id":"seq-…"|null}` (null id = remove from its chain)
-- dissolve: `POST /api/seq/dissolve {"id":"seq-…"}`
+A *sequence* is an ordered chain of **≥2** Backlog/In-Progress issues with a short title; each issue is in **0 or 1** sequences. First resolve the TARGET PROJECT: run `basename "$PWD"` if the repo lives under `~/Documents/Projects/`, else use its full path — and read state from `http://127.0.0.1:7777/roadmap.json?project=<PROJECT>` (URL-encoded) — `sequences` is the array of existing chains `{id,title,items:[N,…]}`, and each item's `sequence` field is its current membership. **Every write body MUST carry that same `"project"` value** — omitting it falls back to whichever project is *active*, which can change between your read and your write and would chain another repo's issues (#82). Writes also need the auth header: `-H "X-Sideboard-Token: $(cat ~/.claude/sideboard-token)"`. Persist via the router API (POST JSON; sidecar-only and instant — the board's pill/modal reflects it on the next 2s poll):
+- create: `POST /api/seq/create {"project":"…","items":[N,…],"title":"…"}` → `{id}` (needs ≥2 existing issues; pulls any listed issue out of its old chain)
+- rename / reorder: `POST /api/seq/update {"project":"…","id":"seq-…","title"?:"…","items"?:[N,…]}`
+- add / remove a member: `POST /api/seq/move {"project":"…","number":N,"id":"seq-…"|null}` (null id = remove from its chain)
+- dissolve: `POST /api/seq/dissolve {"project":"…","id":"seq-…"}`
 
 Parse issue numbers from `$ARGUMENTS` (ignore a leading `sequence` word if present).
 

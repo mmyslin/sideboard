@@ -16,7 +16,7 @@ the board by reconciling the sidecar against `gh issue list`.
 
   python3 sideboard_router.py     # serve :7777, follow the active project
 """
-import json, os, re, sys, shutil, subprocess, threading, time, datetime, uuid, http.server, urllib.parse
+import hmac, json, os, re, secrets, sys, shutil, subprocess, threading, time, datetime, uuid, http.server, urllib.parse
 
 HOME = os.path.expanduser("~")
 ROUTER_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -44,6 +44,31 @@ SYNC_SECONDS = int(os.environ.get("SIDEBOARD_SYNC_SECONDS", "45"))
 MAX_BODY = 1 << 20     # cap POST bodies at 1 MiB — a huge Content-Length shouldn't force a big alloc (#74)
 ISSUE_LIMIT = int(os.environ.get("SIDEBOARD_ISSUE_LIMIT", "1000"))   # gh issue list page size (#76)
 GH_TIMEOUT = int(os.environ.get("SIDEBOARD_GH_TIMEOUT", "60"))       # per-gh-call bound, seconds (#85)
+
+# ---- write auth (#89) ------------------------------------------------------
+# Host/Origin checks stop BROWSERS (CSRF/rebind); a native local process — any
+# other OS user on the machine — can forge both. State-changing endpoints drive
+# the user's authenticated `gh`, so writes additionally require a per-install
+# secret that lives in a 0600 file only this user can read. It persists across
+# restarts so a restored pane URL (which carries it) stays valid. Reads stay
+# open: the board must render from a plain URL (documented scope decision).
+TOKEN_PATH = os.path.join(os.path.expanduser("~"), ".claude", "sideboard-token")
+
+def _load_token():
+    try:
+        t = open(TOKEN_PATH).read().strip()
+        if t:
+            return t
+    except OSError:
+        pass
+    t = secrets.token_hex(32)
+    os.makedirs(os.path.dirname(TOKEN_PATH), exist_ok=True)
+    fd = os.open(TOKEN_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(t)
+    return t
+
+TOKEN = _load_token()
 ERROR_RETRY_SECONDS = int(os.environ.get("SIDEBOARD_ERROR_RETRY_SECONDS", "5"))   # retry faster while errored (#52)
 SCHEMA = 2   # .sideboard/meta.json schema version (migrated forward on load); v2 added sequences (#47)
 
@@ -779,6 +804,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._host_ok() or not self._origin_ok():
             return self._send(403, '{"ok": false, "error": "forbidden origin"}')
+        # Writes need the per-install secret — Host/Origin can't authenticate a
+        # native local caller (#89). Board sends it from its ?token= URL param;
+        # the hook and curl callers read ~/.claude/sideboard-token.
+        if not hmac.compare_digest(self.headers.get("X-Sideboard-Token", ""), TOKEN):
+            return self._send(403, '{"ok": false, "error": "missing or invalid token"}')
         path = self.path.split("?")[0]
         try:
             clen = int(self.headers.get("Content-Length", 0) or 0)

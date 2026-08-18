@@ -19,9 +19,12 @@ print(json.dumps({'session_title': t}) if t else '')
 " 2>/dev/null)
 
 # POST the active project; echo the JSON reply (empty if the router is unreachable).
+# Writes require the per-install secret the router keeps in ~/.claude (#89).
 post() {
   curl -sf -m 1 -X POST http://127.0.0.1:7777/active \
-    -H 'Content-Type: application/json' -d "$body" 2>/dev/null
+    -H 'Content-Type: application/json' \
+    -H "X-Sideboard-Token: $(cat "$HOME/.claude/sideboard-token" 2>/dev/null)" \
+    -d "$body" 2>/dev/null
 }
 launch() {
   # reclaim by process name (never `lsof -ti:7777 | kill` — that also matches the

@@ -360,6 +360,16 @@ let lastRaw = "";
 // Kept in the URL (?project=<id>) so each pane is independent — localStorage is
 // shared across same-origin panes and would switch them all together. (#43)
 let pinnedId = new URLSearchParams(location.search).get("project") || null;
+// Write-auth token (#89): arrives via the /sideboard:roadmap URL, survives pane
+// restores (it's persistent server-side), and is attached to every POST.
+const TOKEN = new URLSearchParams(location.search).get("token") || null;
+const AUTH_TOAST = "Not saved — reopen the board with /sideboard:roadmap (missing auth token)";
+function boardPost(url, payload) {
+  const h = { "Content-Type": "application/json" };
+  if (TOKEN) h["X-Sideboard-Token"] = TOKEN;
+  return fetch(url, { method: "POST", headers: h, body: JSON.stringify(payload) })
+    .then(r => { if (!r.ok) throw new Error(String(r.status)); });
+}
 let renderedProjectId = null;   // id of the project the last poll actually rendered (#58)
 // Route writes to the project this pane is SHOWING, not just whichever is active —
 // else a pinned/lagging pane mutates the wrong repo (#58). Pin wins; else the last poll's id.
@@ -433,9 +443,8 @@ function openEditor(mode, data) {
       : { number: data.number, title, notes: notesEl.value, project: proj };
     close();
     toast(mode === "create" ? "Adding…" : "Saving…");
-    fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
-      .then(r => { if (!r.ok) throw new Error(r.status); })
-      .catch(() => toast("Not saved — is the board server running?"));
+    boardPost(url, payload)
+      .catch(e => toast(e.message === "403" ? AUTH_TOAST : "Not saved — is the board server running?"));
   };
   m.querySelector(".ce-save").addEventListener("click", submit);
   titleEl.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
@@ -452,9 +461,8 @@ function seqPill(seq) {
 function apiPost(url, body, proj) {
   // `proj` is the project captured when the interaction STARTED (modal open /
   // dragstart) — never resolved at send time, which could race a project switch (#80).
-  return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, project: proj !== undefined ? proj : currentProjectId() }) })
-    .then(r => { if (!r.ok) throw new Error(r.status); })
-    .catch(() => toast("Not saved — is the router running?"));
+  return boardPost(url, { ...body, project: proj !== undefined ? proj : currentProjectId() })
+    .catch(e => toast(e.message === "403" ? AUTH_TOAST : "Not saved — is the router running?"));
 }
 
 // Which row the dragged one should sit before, from the cursor Y (null = end).
@@ -556,11 +564,8 @@ function openTags(card) {
     </div>`;
   const chipsEl = m.querySelector(".te-chips");
   const input = m.querySelector("input");
-  const post = (payload) => fetch("/api/label", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(Object.assign({ number, project: proj }, payload)),
-  }).then(r => { if (!r.ok) throw new Error(r.status); })
-    .catch(() => toast("Tag change not saved — is the board server running?"));
+  const post = (payload) => boardPost("/api/label", Object.assign({ number, project: proj }, payload))
+    .catch(e => toast(e.message === "403" ? AUTH_TOAST : "Tag change not saved — is the board server running?"));
   const renderChips = () => {
     chipsEl.innerHTML = tags.length
       ? tags.map(t => `<span class="te-chip">${esc(t)}<button type="button" data-rm="${esc(t)}" aria-label="Remove">×</button></span>`).join("")
@@ -736,7 +741,8 @@ async function poll() {
       renderedProjectId = data.project_id;   // route writes here (#58)
     }
     if (window.__BV && data.board_version && data.board_version !== window.__BV) {
-      location.replace("/?_bv=" + data.board_version + pinQ); return;   // stale HTML -> reload fresh at root, keep the pin (#67)
+      const tokQ = TOKEN ? "&token=" + encodeURIComponent(TOKEN) : "";
+      location.replace("/?_bv=" + data.board_version + pinQ + tokQ); return;   // stale HTML -> reload fresh at root, keep pin + token (#67/#89)
     }
     // re-render only when the CONTENT changes — ignore updated_at, which the
     // router re-stamps every sync (~45s) and would otherwise force a needless
@@ -904,12 +910,8 @@ document.getElementById("board").addEventListener("click", (e) => {
     if (!status) { flush(); return; }
     const number = Number(card.dataset.ref);
     const order = [...board.querySelectorAll(".card")].map(c => Number(c.dataset.ref));
-    fetch("/api/drop", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ number, status, order, project: proj }),   // captured at dragstart (#80)
-    }).then(r => { if (!r.ok) throw new Error(r.status); })
-      .catch(() => toast("Move not saved — is the board server running?"));
+    boardPost("/api/drop", { number, status, order, project: proj })   // proj captured at dragstart (#80)
+      .catch(e => toast(e.message === "403" ? AUTH_TOAST : "Move not saved — is the board server running?"));
     flush();
   });
 })();
