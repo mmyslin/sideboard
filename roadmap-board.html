@@ -118,7 +118,7 @@
     display: flex; align-items: center; gap: 6px;
     font-weight: 700; font-size: 9.5px;
     text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
-    padding: 2px 5px 5px;    /* compact by default; widens with sequences (#53) */
+    padding: 2px 3px 5px;    /* compact (pre-sequences); widens with sequences (#53) */
     transition: padding .15s ease;
   }
   .board.has-sequences .col-head { padding: 2px 12px 5px; }   /* align title with the roomy card gutter */
@@ -129,7 +129,7 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    padding: 5px;            /* compact by default; the roomy gutter (below) is only for sequences (#53) */
+    padding: 0 4px 0 0;      /* compact (pre-sequences tight); the roomy gutter (below) is only for sequences (#53) */
     transition: padding .15s ease;
     position: relative;      /* containing block for the connector overlay */
   }
