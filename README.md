@@ -20,8 +20,8 @@ Because Claude holds your roadmap **and** your codebase in context, Sideboard sh
 
 - **GitHub Issues are the source of truth.** Each card is an issue; `#N` is its number; a **closed issue = Done**.
 - **`.sideboard/meta.json`** — a small committed sidecar — holds what GitHub doesn't: the Backlog↔In Progress split, card order, tag colors, and dependency sequences. The router reconciles it automatically — GitHub wins for content and open/closed; the sidecar wins for lane split and order.
-- **`sideboard_router.py`** serves the board on `127.0.0.1:7777`, rebuilding it from `gh issue list` + the sidecar on each sync. One router serves *all* your projects and follows whichever one you're working in.
-- **`roadmap-board.html`** is a zero-dependency kanban — three columns (Backlog → In Progress → Done), feature-tag chips, drag to move/reorder, add/edit inline. Light and dark themes are automatic.
+- **`scripts/sideboard_router.py`** serves the board on `127.0.0.1:7777`, rebuilding it from `gh issue list` + the sidecar on each sync. One router serves *all* your projects and follows whichever one you're working in.
+- **`roadmap-board.html`** (at the repo root) is a zero-dependency kanban — three columns (Backlog → In Progress → Done), feature-tag chips, drag to move/reorder, add/edit inline. Light and dark themes are automatic.
 
 ## Prerequisites
 
