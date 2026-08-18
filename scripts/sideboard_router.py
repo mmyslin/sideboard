@@ -741,12 +741,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 def sync_loop():
+    backoff = ERROR_RETRY_SECONDS
     while True:
         active = STATE["active"]
-        # retry fast while the active board is errored so a blip clears in seconds, not ~45s (#52)
-        time.sleep(ERROR_RETRY_SECONDS if (active and active.error) else SYNC_SECONDS)
-        for p in list(CACHE.values()):     # keep the active project AND any pinned/viewed one fresh
-            _safe_sync(p)
+        # Fast-retry ONLY a transient network error, and only the errored project,
+        # with exponential backoff (#68). Permanent errors (no repo / gh auth /
+        # Issues disabled / TCC) must NOT hammer every cached project every 5s.
+        if active and active.error == _NET_MSG:
+            time.sleep(min(backoff, SYNC_SECONDS))
+            backoff = min(backoff * 2, SYNC_SECONDS)
+            _safe_sync(active)
+        else:
+            backoff = ERROR_RETRY_SECONDS
+            time.sleep(SYNC_SECONDS)
+            for p in list(CACHE.values()):     # keep the active project AND any pinned/viewed one fresh
+                _safe_sync(p)
 
 
 if __name__ == "__main__":
