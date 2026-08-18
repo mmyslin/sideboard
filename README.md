@@ -28,11 +28,11 @@ Because Claude holds your roadmap **and** your codebase in context, Sideboard sh
 Claude Code plugins run with your user privileges, so it's worth knowing exactly what Sideboard does — it's deliberately narrow:
 
 - **A localhost-only HTTP server** (`scripts/sideboard_router.py`) bound to `127.0.0.1:7777`. It never listens on a public interface and makes no outbound network calls of its own.
-- **`gh` on your behalf** — `gh issue list/create/edit/close` and `gh label` — to read and update the roadmap. All GitHub access goes through your already-authenticated `gh`; the plugin stores no tokens or credentials.
-- **Two hooks** — on session start and on each prompt, a small bash script (`scripts/sideboard-active.sh`) tells the running server which project is active. It always exits 0, so it never *fails* your prompt. Timing: normally one ~1s-capped local request; when the server is down, the hook also restarts it — killing whatever process holds the port (matched strictly by *listening* on it) and launching a fresh one — which can block a prompt for ~3–4s, at most once per 60s.
-- **Local state under `~/.claude`** — a write-auth token (`sideboard-token`, readable only by you), a title→project registry (`sideboard-projects.json`), a server log, and two relaunch-throttle stamps. Nothing leaves your machine.
+- **`gh` on your behalf** — `gh issue list/create/edit/close` and `gh label` — to read and update the roadmap. All GitHub access goes through your already-authenticated `gh`; the plugin stores no GitHub tokens or credentials of its own.
+- **Two hooks** — on session start and on each prompt, a small bash script (`scripts/sideboard-active.sh`) tells the running server which project is active. It always exits 0, so it never *fails* your prompt, and a `timeout` in `hooks.json` hard-caps how long it can add. Timing: normally two short (≤1s each) local requests per prompt; when the server is down, the hook also starts it — reclaiming the port **only from a Sideboard router it identifies as its own** (never an unrelated process) — which can add a few seconds, at most once per 60s. If something that isn't Sideboard already holds the port, the hook backs off and logs a note instead of touching it.
+- **Local state under `~/.claude`** — a per-install write-auth token (`sideboard-token`, `0600`, readable only by you) that also gates the board's read requests, a title→project registry (`sideboard-projects.json`), a server log, and a few relaunch-throttle stamps. These files stay on your machine.
 
-It doesn't download or execute remote code, phone home, or touch anything beyond your repos' issues and the committed `.sideboard/meta.json`.
+It doesn't download or execute remote code, phone home, or touch anything beyond your repos' issues and the committed `.sideboard/meta.json`. One caveat on "stays local": the `/sideboard:roadmap` command reads the local auth token and puts it in the board URL it hands to Claude — so, like anything in your chat, that token reaches whatever model backs your Claude Code session. It only authorizes writes to *your* local board server on `127.0.0.1`; it is not a GitHub credential.
 
 ## Prerequisites
 
@@ -69,7 +69,7 @@ Copies the skill, board, router, and activity hook into `~/.claude/skills/sidebo
 
 ## Use
 
-In any repo that meets the prerequisites, ask Claude to **"set up the roadmap"** (or run `/sideboard:roadmap`). Claude bootstraps the sidecar so the router discovers the project, and opens `http://127.0.0.1:7777/roadmap-board.html` in the preview pane (the `SessionStart` hook already has the board server running). Drag the pane beside your chat and **save the layout** — from then on, as you and Claude decide what to build and as `gh issue` changes land, the board keeps itself current. Re-open it any time with `/sideboard:roadmap`.
+In any repo that meets the prerequisites, ask Claude to **"set up the roadmap"** (or run `/sideboard:roadmap`). Claude bootstraps the sidecar so the router discovers the project, and opens the board in the preview pane (the `SessionStart` hook already has the board server running). Always open it via **`/sideboard:roadmap`** — the board authenticates with a per-install token that the command puts in the URL (`…/roadmap-board.html?token=…`); a bare token-less URL renders but stays read-only and won't load your issues. Drag the pane beside your chat and **save the layout** — from then on, as you and Claude decide what to build and as `gh issue` changes land, the board keeps itself current. Re-open it any time with `/sideboard:roadmap`.
 
 ## Uninstall
 
@@ -91,7 +91,7 @@ rm -f ~/.claude/sideboard-token ~/.claude/sideboard-projects.json ~/.claude/side
 
 - The board is served on `127.0.0.1` (localhost only). Don't bind it to `0.0.0.0`.
 - `.sideboard/meta.json` is meant to be **committed** — it carries your lane split, order, tag colors, and sequences. The board HTML is served by the router from the plugin's own directory; nothing needs to be copied into your repos.
-- Requires the Claude Code desktop app (the one with the preview pane) to pin the board beside chat. Any browser works too — it's just a local web page.
+- Requires the Claude Code desktop app (the one with the preview pane) to pin the board beside chat. Any browser works too — it's just a local web page — but open it with the `?token=…` URL from `/sideboard:roadmap` (or append `?token=$(cat ~/.claude/sideboard-token)`), or it loads read-only with no data.
 
 ## License
 
