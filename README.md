@@ -50,11 +50,23 @@ cd sideboard
 ```
 
 Copies the skill, board, router, and activity hook into `~/.claude/skills/sideboard/` and merges the hook into your `settings.json`. Kept for users not on the plugin flow; the plugin is the supported path.
+
+**Switching from the legacy install to the plugin?** Remove the old hook so it doesn't fire alongside the plugin's. It's harmless (the router is a single idempotent `:7777` process — the duplicate just no-ops), but to keep things clean, delete the `SessionStart`/`UserPromptSubmit` entries pointing at `~/.claude/skills/sideboard/sideboard-active.sh` from `~/.claude/settings.json`.
 </details>
 
 ## Use
 
 In any repo that meets the prerequisites, ask Claude to **"set up the roadmap"** (or run `/sideboard:roadmap`). Claude bootstraps the sidecar so the router discovers the project, and opens `http://127.0.0.1:7777/roadmap-board.html` in the preview pane (the `SessionStart` hook already has the board server running). Drag the pane beside your chat and **save the layout** — from then on, as you and Claude decide what to build and as `gh issue` changes land, the board keeps itself current. Re-open it any time with `/sideboard:roadmap`.
+
+## Uninstall
+
+`/plugin uninstall sideboard@sideboard` removes the plugin, but the board **server keeps running** — the `:7777` router was started by the session hook and nothing signals it to stop. Shut it down with:
+
+```bash
+pkill -f sideboard_router.py
+```
+
+(The router writes no state of its own; your roadmap lives in GitHub Issues and the committed `.sideboard/meta.json`, so stopping it loses nothing.)
 
 ## Notes
 
