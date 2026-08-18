@@ -35,6 +35,11 @@ REGISTRY = os.path.join(HOME, ".claude", "sideboard-projects.json")
 PROJECTS_ROOT = os.path.abspath(os.environ.get(
     "SIDEBOARD_PROJECTS_ROOT", os.path.join(HOME, "Documents", "Projects")))
 PORT = int(os.environ.get("SIDEBOARD_PORT", "7777"))
+# Loopback-only guard (#57). Cross-site browser requests always carry an Origin and
+# a Host of the page they came from; a DNS-rebound page reaches us with a foreign
+# Host. Local callers (the hook, curl) send the real loopback Host and no Origin.
+_ALLOWED_HOSTS = frozenset({f"127.0.0.1:{PORT}", f"localhost:{PORT}"})
+_ALLOWED_ORIGINS = frozenset({f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}"})
 SYNC_SECONDS = int(os.environ.get("SIDEBOARD_SYNC_SECONDS", "45"))
 ERROR_RETRY_SECONDS = int(os.environ.get("SIDEBOARD_ERROR_RETRY_SECONDS", "5"))   # retry faster while errored (#52)
 SCHEMA = 2   # .sideboard/meta.json schema version (migrated forward on load); v2 added sequences (#47)
@@ -558,6 +563,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    def _host_ok(self):
+        # Reject foreign Host headers (DNS-rebinding defense, #57).
+        return (self.headers.get("Host") or "").strip().lower() in _ALLOWED_HOSTS
+
+    def _origin_ok(self):
+        # Cross-site browser requests always send Origin; local curl/hook callers
+        # send none. Allow absent; otherwise require a loopback origin (CSRF defense).
+        origin = self.headers.get("Origin")
+        if origin is not None:
+            return origin.strip().lower() in _ALLOWED_ORIGINS
+        ref = self.headers.get("Referer")
+        if ref:
+            try:
+                u = urllib.parse.urlparse(ref)
+                return f"{u.scheme}://{u.netloc}".lower() in _ALLOWED_ORIGINS
+            except Exception:
+                return False
+        return True
+
     def _send(self, code, body, ctype="application/json"):
         data = body if isinstance(body, bytes) else body.encode("utf-8")
         self.send_response(code)
@@ -568,6 +592,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
+        if not self._host_ok():
+            return self._send(403, '{"ok": false, "error": "forbidden host"}')
         path = self.path.split("?")[0]
         if path == "/healthz":
             p = STATE["active"]
@@ -604,6 +630,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self._send(200, html, "text/html; charset=utf-8")
 
     def do_POST(self):
+        if not self._host_ok() or not self._origin_ok():
+            return self._send(403, '{"ok": false, "error": "forbidden origin"}')
         path = self.path.split("?")[0]
         try:
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or "{}")
