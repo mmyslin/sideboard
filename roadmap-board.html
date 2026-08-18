@@ -420,7 +420,7 @@ function openEditor(mode, data) {
     toast(mode === "create" ? "Adding…" : "Saving…");
     fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
       .then(r => { if (!r.ok) throw new Error(r.status); })
-      .catch(() => toast("Not saved — is the companion running?"));
+      .catch(() => toast("Not saved — is the board server running?"));
   };
   m.querySelector(".ce-save").addEventListener("click", submit);
   titleEl.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
@@ -535,7 +535,7 @@ function openTags(card) {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify(Object.assign({ number }, payload)),
   }).then(r => { if (!r.ok) throw new Error(r.status); })
-    .catch(() => toast("Tag change not saved — is the companion running?"));
+    .catch(() => toast("Tag change not saved — is the board server running?"));
   const renderChips = () => {
     chipsEl.innerHTML = tags.length
       ? tags.map(t => `<span class="te-chip">${esc(t)}<button type="button" data-rm="${esc(t)}" aria-label="Remove">×</button></span>`).join("")
@@ -812,7 +812,7 @@ document.getElementById("board").addEventListener("click", (e) => {
   board.addEventListener("pointercancel", end);
 })();
 
-// Drag & drop: move between columns / reorder -> POST /api/drop (github mode; needs the companion).
+// Drag & drop: move between columns / reorder -> POST /api/drop (github mode; needs the router).
 (function enableDnD() {
   const board = document.getElementById("board");
   let dragEl = null;
@@ -857,7 +857,7 @@ document.getElementById("board").addEventListener("click", (e) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ number, status, order }),
     }).then(r => { if (!r.ok) throw new Error(r.status); })
-      .catch(() => toast("Move not saved — is the companion running?"));
+      .catch(() => toast("Move not saved — is the board server running?"));
   });
 })();
 

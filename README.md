@@ -23,8 +23,19 @@ Because Claude holds your roadmap **and** your codebase in context, Sideboard sh
 - **`scripts/sideboard_router.py`** serves the board on `127.0.0.1:7777`, rebuilding it from `gh issue list` + the sidecar on each sync. One router serves *all* your projects and follows whichever one you're working in.
 - **`roadmap-board.html`** (at the repo root) is a zero-dependency kanban — three columns (Backlog → In Progress → Done), feature-tag chips, drag to move/reorder, add/edit inline. Light and dark themes are automatic.
 
+## What it runs on your machine
+
+Claude Code plugins run with your user privileges, so it's worth knowing exactly what Sideboard does — it's deliberately narrow:
+
+- **A localhost-only HTTP server** (`scripts/sideboard_router.py`) bound to `127.0.0.1:7777`. It never listens on a public interface and makes no outbound network calls of its own.
+- **`gh` on your behalf** — `gh issue list/create/edit/close` and `gh label` — to read and update the roadmap. All GitHub access goes through your already-authenticated `gh`; the plugin stores no tokens or credentials.
+- **Two hooks** — on session start and on each prompt, a fire-and-forget bash script (`scripts/sideboard-active.sh`) tells the running server which project is active. It never blocks your prompt.
+
+It doesn't download or execute remote code, phone home, or touch anything beyond your repos' issues and the committed `.sideboard/meta.json`.
+
 ## Prerequisites
 
+- **macOS or Linux.** The board server and hooks are bash + `python3`; on Windows you'd need a bash shell (Git Bash or WSL).
 - A git repo with a **GitHub remote and Issues enabled**.
 - **`gh`** installed and authenticated (`gh auth login`).
 - **`python3`** on PATH (runs the local board server).
