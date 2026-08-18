@@ -16,7 +16,12 @@ SETTINGS="${CLAUDE_SETTINGS:-$HOME/.claude/settings.json}"
 
 # One-time cleanup: remove the pre-rename VibeMap install so it doesn't linger
 # beside the new one (the stale hook is also stripped from settings.json below).
-rm -rf "${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}/vibemap"
+# Guard it: only remove a dir that actually looks like the old skill install, so
+# an unrelated ~/.claude/skills/vibemap the user happens to have isn't nuked (#132).
+OLD_VIBEMAP="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}/vibemap"
+if [ -d "$OLD_VIBEMAP" ] && { [ -e "$OLD_VIBEMAP/SKILL.md" ] || [ -e "$OLD_VIBEMAP/vibemap_router.py" ] || [ -e "$OLD_VIBEMAP/sideboard_router.py" ]; }; then
+  rm -rf "$OLD_VIBEMAP"
+fi
 
 mkdir -p "$DEST"
 cp "$SRC/skills/sideboard/SKILL.md"   "$DEST/SKILL.md"
@@ -60,9 +65,17 @@ for event in ("SessionStart", "UserPromptSubmit"):
     hooks[event] = groups
 
 os.makedirs(os.path.dirname(settings_path), exist_ok=True)
-with open(settings_path, "w") as f:
+# Write atomically: settings.json is the user's whole Claude Code config, and a
+# crash/interrupt mid-write would leave it truncated — disabling every setting in
+# it, not just ours. Write a temp beside it and os.replace (a .sideboard.bak was
+# already taken above). (#128)
+tmp = settings_path + ".sideboard.tmp"
+with open(tmp, "w") as f:
     json.dump(s, f, indent=2)
     f.write("\n")
+    f.flush()
+    os.fsync(f.fileno())
+os.replace(tmp, settings_path)
 print(f"✅ Wired SessionStart + UserPromptSubmit hooks in: {settings_path}")
 PY
 
