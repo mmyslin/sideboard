@@ -306,18 +306,36 @@ def _is_net_error(text):
     return any(m in t for m in _NET_MARKERS)
 _NET_MSG = "Can't reach GitHub — reconnecting…"
 
+_ACCESS = {"ok": True, "at": 0.0}   # cached probe result; refreshed off-thread (#93)
+
+def _probe_access():
+    """The actual (blocking) probe — run in a background thread only. A live
+    os.listdir can hang for many seconds on the first-run TCC consent dialog or
+    an iCloud-evicted ~/Documents."""
+    try:
+        os.listdir(PROJECTS_ROOT)
+        _ACCESS["ok"] = True
+    except PermissionError:
+        if _ACCESS["ok"]:
+            print("[router] ~/Documents access DENIED (macOS TCC) — boards will show the restart hint (#46)",
+                  file=sys.stderr, flush=True)
+        _ACCESS["ok"] = False     # TCC denied ~/Documents to this process
+    except OSError:
+        _ACCESS["ok"] = True      # missing/other root — not a permission wall; don't trigger a relaunch
+
+
 def access_ok():
     """Can this process read the projects root? macOS TCC can deny a hook-launched
     daemon access to ~/Documents; when it does, the launcher should relaunch the
     router from a granted context instead of serving broken boards. Exposed on
-    /healthz and the /active response so the hook/up-script can self-heal (#46)."""
-    try:
-        os.listdir(PROJECTS_ROOT)
-    except PermissionError:
-        return False          # TCC denied ~/Documents to this process
-    except OSError:
-        pass                  # missing/other root — not a permission wall; don't trigger a relaunch
-    return True
+    /healthz and the /active response so the hook/up-script can self-heal (#46).
+    Answers from a CACHE and never blocks: the hook probes with curl -m 1 and
+    treats a stall as "router dead" -> pkill -9 — a slow filesystem must not get
+    a healthy router killed (#93)."""
+    if time.monotonic() - _ACCESS["at"] > 30:
+        _ACCESS["at"] = time.monotonic()
+        threading.Thread(target=_probe_access, daemon=True).start()
+    return _ACCESS["ok"]
 
 
 # ---- a single project ------------------------------------------------------
@@ -911,5 +929,6 @@ if __name__ == "__main__":
               file=sys.stderr, flush=True)
         sys.exit(0)
     print(f"[router] serving :{PORT}; following the active project (root: {PROJECTS_ROOT})", flush=True)
-    print(f"[router] ~/Documents access: {'ok' if access_ok() else 'DENIED (macOS TCC) — boards will show the restart hint (#46)'}", flush=True)
+    # One real (possibly slow) probe off-thread; handlers answer from the cache (#93).
+    threading.Thread(target=_probe_access, daemon=True).start()
     server.serve_forever()
