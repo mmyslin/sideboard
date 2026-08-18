@@ -170,8 +170,19 @@ def project_name(d):
 
 
 def project_by_id(pid):
-    """Resolve a dropdown project id (dir basename) to a directory."""
-    d = os.path.join(PROJECTS_ROOT, pid)
+    """Resolve a dropdown project id (dir basename) to a directory, confined to
+    PROJECTS_ROOT. The id is attacker-controllable (the `project` query param), so
+    reject path separators and anything that escapes the root — no `../` traversal,
+    no reading arbitrary dirs' meta.json or spawning gh with cwd anywhere (#59)."""
+    if not pid or pid in (".", "..") or os.sep in pid or (os.altsep and os.altsep in pid):
+        return None
+    root = os.path.realpath(PROJECTS_ROOT)
+    d = os.path.realpath(os.path.join(root, pid))
+    try:
+        if os.path.commonpath([root, d]) != root:
+            return None
+    except ValueError:      # different drive, etc.
+        return None
     return d if os.path.isdir(d) else None
 
 
