@@ -1,5 +1,13 @@
 # Sideboard ↔ GitHub Issues — design (#15)
 
+> **Historical.** This captures the original #15 design and its
+> per-project `github_companion.py` "companion" model. The shipped architecture
+> superseded it: a single **router** (`scripts/sideboard_router.py`) serves all
+> projects, assembles the board in memory from `gh` on each sync, and is
+> distributed as a plugin (#12) — there is no companion process or polled data
+> file. See the router's module docstring for the current design. Kept for the
+> rationale; don't take the mechanics here as current.
+
 ## Decision
 
 GitHub Issues are the **single source of truth** for roadmap items. A small local
