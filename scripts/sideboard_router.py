@@ -42,6 +42,7 @@ _ALLOWED_HOSTS = frozenset({f"127.0.0.1:{PORT}", f"localhost:{PORT}"})
 _ALLOWED_ORIGINS = frozenset({f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}"})
 SYNC_SECONDS = int(os.environ.get("SIDEBOARD_SYNC_SECONDS", "45"))
 MAX_BODY = 1 << 20     # cap POST bodies at 1 MiB — a huge Content-Length shouldn't force a big alloc (#74)
+ISSUE_LIMIT = int(os.environ.get("SIDEBOARD_ISSUE_LIMIT", "1000"))   # gh issue list page size (#76)
 ERROR_RETRY_SECONDS = int(os.environ.get("SIDEBOARD_ERROR_RETRY_SECONDS", "5"))   # retry faster while errored (#52)
 SCHEMA = 2   # .sideboard/meta.json schema version (migrated forward on load); v2 added sequences (#47)
 
@@ -369,15 +370,21 @@ class Project:
                          "sequences": _norm_sequences(raw.get("sequences", []))})
         print(f"[router] migrated {self.path} sidecar v{v} -> v{SCHEMA}", flush=True)
 
-    def _reconcile(self, issues, meta):
+    def _reconcile(self, issues, meta, complete=True):
+        # `complete` is False when the issue list was truncated at the API page
+        # limit — then we must NOT treat missing issues as deleted (that would purge
+        # real cards' status/order/sequence records); we only add, never prune (#76).
         status, order = dict(meta["status"]), list(meta["order"])
         present = {str(i["number"]) for i in issues}
         for i in issues:
             n = str(i["number"])
             if i["state"].lower() == "open" and n not in status:
                 status[n] = "backlog"
-        status = {n: s for n, s in status.items() if n in present}
-        order = list(dict.fromkeys(n for n in order if n in present))
+        if complete:
+            status = {n: s for n, s in status.items() if n in present}
+            order = list(dict.fromkeys(n for n in order if n in present))
+        else:
+            order = list(dict.fromkeys(order))
         for i in issues:
             n = str(i["number"])
             if n not in order:
@@ -394,7 +401,7 @@ class Project:
         for s in meta.get("sequences", []):
             items = []
             for n in s["items"]:
-                if n in present and n not in seen:
+                if (n in present or not complete) and n not in seen:
                     items.append(n); seen.add(n)
             if len(items) >= 2:
                 sequences.append({"id": s.get("id") or _new_seq_id(),
@@ -417,7 +424,7 @@ class Project:
                     "run it from a repo, and make sure `gh auth login` is done.")
                 return
             try:
-                issues = json.loads(self._gh("issue", "list", "--state", "all", "--limit", "1000",
+                issues = json.loads(self._gh("issue", "list", "--state", "all", "--limit", str(ISSUE_LIMIT),
                                              "--json", "number,title,body,state,labels"))
             except subprocess.CalledProcessError as e:
                 stderr = (e.stderr or "").strip()
@@ -428,7 +435,11 @@ class Project:
                 return
             self.issues = issues
             self.error = None                     # clear stale errors; the sidecar ops below may re-set it
-            self._save_meta(self._reconcile(self.issues, self._load_meta()))
+            complete = len(issues) < ISSUE_LIMIT  # a full page means more issues exist beyond it (#76)
+            if not complete:
+                print(f"[router] {self.repo}: issue list hit the {ISSUE_LIMIT} limit — not pruning "
+                      f"missing issues (raise SIDEBOARD_ISSUE_LIMIT).", file=sys.stderr, flush=True)
+            self._save_meta(self._reconcile(self.issues, self._load_meta(), complete))
             if self.error:                        # _load_meta/_save_meta hit a permission wall (#46)
                 return
             self.synced_at = _now()
