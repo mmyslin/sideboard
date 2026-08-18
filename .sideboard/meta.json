@@ -90,16 +90,15 @@
     "55",
     "56"
   ],
-  "next_color": 8,
+  "next_color": 7,
   "tag_colors": {
-    "distribution": 6,
-    "enhancement": 5,
-    "good first issue": 0,
-    "recommendations": 2,
-    "sequences": 4,
-    "skills": 7,
-    "slash commands": 3,
-    "ui": 1
+    "distribution": 0,
+    "skills": 1,
+    "sequences": 2,
+    "ui": 3,
+    "recommendations": 4,
+    "slash commands": 5,
+    "enhancement": 6
   },
   "sequences": [
     {
