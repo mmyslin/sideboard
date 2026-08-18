@@ -47,11 +47,12 @@ GH_TIMEOUT = int(os.environ.get("SIDEBOARD_GH_TIMEOUT", "60"))       # per-gh-ca
 
 # ---- write auth (#89) ------------------------------------------------------
 # Host/Origin checks stop BROWSERS (CSRF/rebind); a native local process — any
-# other OS user on the machine — can forge both. State-changing endpoints drive
-# the user's authenticated `gh`, so writes additionally require a per-install
-# secret that lives in a 0600 file only this user can read. It persists across
-# restarts so a restored pane URL (which carries it) stays valid. Reads stay
-# open: the board must render from a plain URL (documented scope decision).
+# other OS user on the machine — can forge both. So both the state-changing
+# endpoints AND the data-bearing reads (which expose private-repo issue content
+# and home-dir paths, #111) require a per-install secret that lives in a 0600
+# file only this user can read. It persists across restarts so a restored pane
+# URL (which carries the token) stays valid. Only the static board shell and
+# /healthz are unauthenticated — neither reveals repo data.
 TOKEN_PATH = os.path.join(os.path.expanduser("~"), ".claude", "sideboard-token")
 
 def _load_token():
@@ -127,8 +128,25 @@ def _tokens(s):
 
 def _load_registry():
     try:
-        return json.load(open(REGISTRY))
-    except Exception:
+        with open(REGISTRY) as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+        raise ValueError("registry is not a JSON object")
+    except FileNotFoundError:
+        return {}
+    except Exception as e:
+        # The registry is user-editable (a trailing comma breaks it). Returning {}
+        # and continuing would let the next full-coverage title match _save_registry
+        # a single-entry file, permanently deleting every other mapping — including
+        # out-of-root projects only reachable via the registry. Quarantine it first
+        # so the mappings are recoverable, mirroring the sidecar path (#113).
+        bad = REGISTRY + ".corrupt.bak"
+        try:
+            os.replace(REGISTRY, bad)
+            print(f"[router] registry unreadable ({e}); quarantined -> {bad}", file=sys.stderr, flush=True)
+        except OSError:
+            pass
         return {}
 
 
@@ -176,34 +194,38 @@ def resolve_dir(title):
     token (`tracker`) no longer half-matches any title mentioning it."""
     if not title:
         return None
-    # Guard the registry read-modify-write: concurrent /active handler threads must
-    # not each load the same snapshot and clobber the other's new mapping (#77).
-    with LOCK:
-        reg = _load_registry()
-        mapped = reg.get(title)
-        if mapped and os.path.isdir(mapped):
-            return mapped
-        tt = _tokens(title)
-        if not tt:
-            return None
-        best = None                            # ((score, overlap), dir)
-        for d in _candidate_dirs():
-            dt = _tokens(os.path.basename(d))
-            if not dt:
-                continue
-            overlap = len(tt & dt)
-            score = overlap / len(dt)          # fraction of the dir's name tokens found in the title
-            if score <= 0.5:                   # require a strict majority, not just half
-                continue
-            cand = ((score, overlap), d)
-            if best is None or cand[0] > best[0]:   # higher score, then more matched tokens (specificity)
-                best = cand
-        if best is None:
-            return None
-        if best[0][0] >= 1.0:                  # persist only confident, full-coverage matches
+    mapped = _load_registry().get(title)
+    if mapped and os.path.isdir(mapped):
+        return mapped
+    tt = _tokens(title)
+    if not tt:
+        return None
+    # The candidate scan does an os.listdir + per-dir stats on PROJECTS_ROOT, which
+    # can hang for seconds on a first-run TCC dialog or an iCloud-evicted Documents
+    # (see _probe_access). Do it OUTSIDE the global lock so a slow filesystem can't
+    # freeze every other /active and board write (#115).
+    best = None                            # ((score, overlap), dir)
+    for d in _candidate_dirs():
+        dt = _tokens(os.path.basename(d))
+        if not dt:
+            continue
+        overlap = len(tt & dt)
+        score = overlap / len(dt)          # fraction of the dir's name tokens found in the title
+        if score <= 0.5:                   # require a strict majority, not just half
+            continue
+        cand = ((score, overlap), d)
+        if best is None or cand[0] > best[0]:   # higher score, then more matched tokens (specificity)
+            best = cand
+    if best is None:
+        return None
+    if best[0][0] >= 1.0:                  # persist only confident, full-coverage matches
+        # Lock ONLY the registry read-modify-write: concurrent /active threads must
+        # not load the same snapshot and clobber each other's new mapping (#77).
+        with LOCK:
+            reg = _load_registry()
             reg[title] = best[1]
             _save_registry(reg)
-        return best[1]
+    return best[1]
 
 
 def project_name(d):
@@ -436,9 +458,17 @@ class Project:
             os.makedirs(os.path.dirname(self.meta_path), exist_ok=True)
             with open(tmp, "w") as f:
                 json.dump(stable, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())        # durable before the rename — a crash/power-loss
+                                            # between write and replace must not leave the
+                                            # committed sidecar pointing at empty data (#126)
             os.replace(tmp, self.meta_path)   # atomic: never leaves a truncated sidecar (#60)
         except PermissionError:
             self.error = _PERM_MSG      # sidecar in ~/Documents blocked by macOS TCC (#46)
+            try: os.remove(tmp)
+            except OSError: pass
+        except OSError as e:            # disk full, read-only FS, etc. — surface, don't crash the sync
+            self.error = f"Couldn't write the sidecar: {e}"
             try: os.remove(tmp)
             except OSError: pass
 
@@ -476,11 +506,17 @@ class Project:
         # real cards' status/order/sequence records); we only add, never prune (#76).
         status, order = dict(meta["status"]), list(meta["order"])
         present = {str(i["number"]) for i in issues}
+        # A zero-issue fetch against a populated sidecar is almost never a real
+        # "everything was deleted" — it's a wrong/empty repo, a fork with Issues
+        # off, or a transient blip. Pruning would wipe the whole committed sidecar
+        # (status, order, sequences) with no backup, and a collaborator could then
+        # push that wipe upstream. So never prune when the fetch is empty (#112).
+        prune = complete and bool(present)
         for i in issues:
             n = str(i["number"])
             if i["state"].lower() == "open" and n not in status:
                 status[n] = "backlog"
-        if complete:
+        if prune:
             status = {n: s for n, s in status.items() if n in present}
             order = list(dict.fromkeys(n for n in order if n in present))
         else:
@@ -501,7 +537,7 @@ class Project:
         for s in meta.get("sequences", []):
             items = []
             for n in s["items"]:
-                if (n in present or not complete) and n not in seen:
+                if (n in present or not prune) and n not in seen:
                     items.append(n); seen.add(n)
             if len(items) >= 2:
                 sequences.append({"id": s.get("id") or _new_seq_id(),
@@ -710,12 +746,27 @@ class Project:
 
 
 def get_project(path):
+    # Canonicalize the cache key: resolve_dir returns registry values verbatim and
+    # _candidate_dirs returns abspath'd (not realpath'd) joins, while project_by_id
+    # returns realpath — so the SAME directory could otherwise land under two keys,
+    # producing two Project objects with independent locks that lose each other's
+    # sidecar writes (#114). realpath collapses symlinks and trailing slashes.
+    key = os.path.realpath(path)
     with LOCK:
-        p = CACHE.get(path)
-        if p is None:
-            p = Project(path)
-            p.migrate()
-            CACHE[path] = p
+        p = CACHE.get(key)
+        if p is not None:
+            return p
+    # Build OUTSIDE the global lock: Project.__init__ runs `gh repo view` (up to
+    # 10s) and the constructor must not freeze every other /active, write, and
+    # first-load that also needs LOCK (#115). Two threads racing the same new
+    # project may both build; the re-check under LOCK keeps whichever landed first.
+    p = Project(key)
+    p.migrate()
+    with LOCK:
+        existing = CACHE.get(key)
+        if existing is not None:
+            return existing
+        CACHE[key] = p
         return p
 
 
@@ -752,6 +803,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # Reject foreign Host headers (DNS-rebinding defense, #57).
         return (self.headers.get("Host") or "").strip().lower() in _ALLOWED_HOSTS
 
+    def _token_ok(self):
+        # Constant-time, non-ASCII-safe token check (#125). Used to gate both
+        # writes and the data-bearing reads (#111).
+        sent = self.headers.get("X-Sideboard-Token", "").encode("latin-1", "replace")
+        return hmac.compare_digest(sent, TOKEN.encode("ascii"))
+
     def _origin_ok(self):
         # Cross-site browser requests always send Origin; local curl/hook callers
         # send none. Allow absent; otherwise require a loopback origin (CSRF defense).
@@ -784,6 +841,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             p = STATE["active"]
             return self._send(200, json.dumps({"router": True, "active": p.title if p else None,
                                                 "access_ok": access_ok()}))
+        # /projects and /roadmap.json expose private-repo issue titles/bodies/labels
+        # and home-directory project paths, and a first-load /roadmap.json drives gh
+        # subprocesses + a sidecar write. Loopback is reachable by every OS user on
+        # the machine, so gate these reads on the same 0600 token the writes use — a
+        # co-resident user can no longer curl out another user's private issues or
+        # force gh side-effects. The board sends the header from its ?token= URL; the
+        # static shell and /healthz stay open so the pane still renders + self-heals (#111).
+        if path in ("/projects", "/roadmap.json") and not self._token_ok():
+            return self._send(403, '{"ok": false, "error": "missing or invalid token"}')
         if path == "/projects":
             return self._send(200, json.dumps({"projects": list_projects()}))
         if path == "/roadmap.json":
@@ -825,7 +891,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # Writes need the per-install secret — Host/Origin can't authenticate a
         # native local caller (#89). Board sends it from its ?token= URL param;
         # the hook and curl callers read ~/.claude/sideboard-token.
-        if not hmac.compare_digest(self.headers.get("X-Sideboard-Token", ""), TOKEN):
+        if not self._token_ok():
             return self._send(403, '{"ok": false, "error": "missing or invalid token"}')
         path = self.path.split("?")[0]
         try:
@@ -854,9 +920,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             # the resolved project's board. Issue numbers collide across repos, so a
             # stale pane racing a project switch would otherwise mutate a real,
             # unrelated issue in the other repo.
-            if path in ("/api/drop", "/api/edit", "/api/label", "/api/seq/move") \
-               and str(int(body["number"])) not in {str(i["number"]) for i in p.issues}:
-                return self._send(409, json.dumps({"ok": False, "error": "issue not on this project's board"}))
+            if path in ("/api/drop", "/api/edit", "/api/label", "/api/seq/move"):
+                num = str(int(body["number"]))
+                if num not in {str(i["number"]) for i in p.issues}:
+                    # A just-created issue (the documented `gh issue create` then
+                    # /api/drop flow) isn't in the ~45s-stale cache yet. Refetch
+                    # once before rejecting, so the two-step move works within a
+                    # turn instead of 409'ing until the next sync (#121).
+                    _safe_sync(p)
+                    if num not in {str(i["number"]) for i in p.issues}:
+                        return self._send(409, json.dumps({"ok": False, "error": "issue not on this project's board"}))
             if path == "/api/drop":
                 p.apply_drop(int(body["number"]), body["status"], body.get("order"))
                 return self._send(200, json.dumps({"ok": True}))

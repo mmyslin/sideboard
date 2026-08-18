@@ -370,6 +370,11 @@ function boardPost(url, payload) {
   return fetch(url, { method: "POST", headers: h, body: JSON.stringify(payload) })
     .then(r => { if (!r.ok) throw new Error(String(r.status)); });
 }
+// Reads are token-gated too (private issue content, #111). Attach the token the
+// pane URL carries; a token-less pane gets 403 and the poll surfaces it.
+function boardFetch(url) {
+  return fetch(url, { cache: "no-store", headers: TOKEN ? { "X-Sideboard-Token": TOKEN } : {} });
+}
 let renderedProjectId = null;   // id of the project the last poll actually rendered (#58)
 // Route writes to the project this pane is SHOWING, not just whichever is active —
 // else a pinned/lagging pane mutates the wrong repo (#58). Pin wins; else the last poll's id.
@@ -444,7 +449,13 @@ function openEditor(mode, data) {
     close();
     toast(mode === "create" ? "Adding…" : "Saving…");
     boardPost(url, payload)
-      .catch(e => toast(e.message === "403" ? AUTH_TOAST : "Not saved — is the board server running?"));
+      .catch(e => {
+        // The modal was closed optimistically; a failed write would otherwise
+        // discard everything the user typed. Reopen it pre-filled so their title
+        // and notes survive and the save is one click away to retry (#127).
+        toast(e.message === "403" ? AUTH_TOAST : "Not saved — is the board server running? Reopened your draft.");
+        openEditor(mode, { ...data, title, notes: notesEl.value });
+      });
   };
   m.querySelector(".ce-save").addEventListener("click", submit);
   titleEl.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
@@ -724,7 +735,11 @@ async function poll() {
   const seq = ++pollSeq;
   try {
     const pinQ = pinnedId ? "&project=" + encodeURIComponent(pinnedId) : "";
-    const res = await fetch("/roadmap.json?_=" + Date.now() + pinQ, { cache: "no-store" });   // absolute: works even if the pane URL has a stale path (#67)
+    const res = await boardFetch("/roadmap.json?_=" + Date.now() + pinQ);   // absolute: works even if the pane URL has a stale path (#67)
+    if (res.status === 403) {   // token-gated read (#111): pane opened without ?token=
+      if (seq === pollSeq) setStatus("err", { error: "Board is read-only — reopen with /sideboard:roadmap (missing auth token)." });
+      return;
+    }
     if (!res.ok) throw new Error(res.status);
     const raw = await res.text();
     if (seq !== pollSeq) return;   // superseded — a slow response must not repaint over a newer one (#87)
@@ -865,8 +880,11 @@ document.getElementById("board").addEventListener("click", (e) => {
   const board = document.getElementById("board");
   let dragEl = null;
   let dragProj = null;   // project captured at dragstart, sent at dragend (#80)
-  // Let poll() abort a drag whose project just changed under it (#80).
-  cancelDrag = () => { if (dragEl) { dragEl.classList.remove("dragging"); dragEl = null; dragProj = null; } dragging = false; };
+  // Let poll() abort a drag whose project just changed under it (#80). Also drop
+  // any buffered mid-drag render: it belongs to the OLD project, and a later
+  // drag's flush() would otherwise repaint the board to that stale project while
+  // writes still route to the new one (#116).
+  cancelDrag = () => { if (dragEl) { dragEl.classList.remove("dragging"); dragEl = null; dragProj = null; } dragging = false; pendingRender = null; };
 
   const dragAfter = (bodyEl, y) => {
     for (const c of bodyEl.querySelectorAll(".card:not(.dragging)")) {
@@ -900,8 +918,13 @@ document.getElementById("board").addEventListener("click", (e) => {
   board.addEventListener("dragend", () => {
     dragging = false;
     // A content change that arrived mid-drag was deferred (#88) — apply it now,
-    // AFTER reading the drop position out of the DOM below.
-    const flush = () => { if (pendingRender) { const d = pendingRender; pendingRender = null; render(d); } };
+    // AFTER reading the drop position out of the DOM below. Guard by project: only
+    // paint a buffered render that still matches the pane's current project, never
+    // one left over from a project that flipped mid-drag (#116).
+    const flush = () => {
+      const d = pendingRender; pendingRender = null;
+      if (d && (d.project_id === undefined || d.project_id === currentProjectId())) render(d);
+    };
     if (!dragEl) { flush(); return; }
     const card = dragEl, proj = dragProj;
     dragEl = null; dragProj = null;
@@ -911,7 +934,16 @@ document.getElementById("board").addEventListener("click", (e) => {
     const number = Number(card.dataset.ref);
     const order = [...board.querySelectorAll(".card")].map(c => Number(c.dataset.ref));
     boardPost("/api/drop", { number, status, order, project: proj })   // proj captured at dragstart (#80)
-      .catch(e => toast(e.message === "403" ? AUTH_TOAST : "Move not saved — is the board server running?"));
+      .catch(e => {
+        // The card was moved optimistically in the DOM; a rejected write must not
+        // leave that phantom move on screen looking saved. Force a re-fetch to snap
+        // back to server truth, and name the actual failure (a 409 is the router
+        // refusing, not an outage) rather than always blaming a dead server (#117).
+        toast(e.message === "403" ? AUTH_TOAST
+            : e.message === "409" ? "Move not saved — the board refreshed; try again."
+            : "Move not saved — is the board server running?");
+        lastRaw = ""; poll();   // revert the optimistic move to server state
+      });
     flush();
   });
 })();
@@ -932,7 +964,7 @@ document.getElementById("board").addEventListener("click", (e) => {
     menu.innerHTML = rows.join("");
   }
   async function open() {
-    try { projects = ((await (await fetch("/projects?_=" + Date.now(), { cache: "no-store" })).json()).projects) || []; }
+    try { projects = ((await (await boardFetch("/projects?_=" + Date.now())).json()).projects) || []; }   // token-gated (#111)
     catch { projects = []; }
     draw();
     menu.hidden = false; btn.setAttribute("aria-expanded", "true");
