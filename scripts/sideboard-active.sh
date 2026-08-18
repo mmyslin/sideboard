@@ -26,7 +26,11 @@ post() {
 launch() {
   # reclaim by process name (never `lsof -ti:7777 | kill` — that also matches the
   # Claude app's client socket on :7777), start detached, and stamp the time.
-  pkill -9 -f 'sideboard_router.py|vibemap_router.py|github_companion.py' 2>/dev/null
+  # Anchor to the interpreter so we only kill the python server process — a bare
+  # filename pattern also matches `vim scripts/sideboard_router.py`, `less …`, etc.
+  # and would SIGKILL an editor viewing the source (#66). Still catches legacy
+  # vibemap_router.py / github_companion.py processes.
+  pkill -9 -f 'python3? .*(sideboard_router|vibemap_router|github_companion)\.py' 2>/dev/null
   nohup python3 "$HERE/sideboard_router.py" >/tmp/sideboard-router.log 2>&1 &
   date +%s >/tmp/sideboard-relaunch.stamp
   sleep 1

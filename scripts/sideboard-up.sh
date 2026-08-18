@@ -16,7 +16,9 @@ access_ok() { printf '%s' "$1" | grep -q '"access_ok": *true'; }
 launch() {
   # reclaim by process name — NOT `lsof -ti:7777 | kill`, which also matches the
   # Claude app's client socket on :7777 and would kill/disrupt the app itself.
-  pkill -9 -f 'sideboard_router.py|vibemap_router.py|github_companion.py' 2>/dev/null
+  # Anchor to the interpreter so a bare filename in an editor/pager argv (e.g.
+  # `vim sideboard_router.py`) isn't SIGKILLed too (#66).
+  pkill -9 -f 'python3? .*(sideboard_router|vibemap_router|github_companion)\.py' 2>/dev/null
   nohup python3 sideboard_router.py >/tmp/sideboard-router.log 2>&1 &
   date +%s >/tmp/sideboard-relaunch.stamp
   for _ in $(seq 1 40); do is_router "$(health)" && break; sleep 0.05; done   # ready within ~2s
