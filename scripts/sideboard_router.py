@@ -482,10 +482,12 @@ class Project:
             if status == "done":
                 if issue and not closed:
                     self._gh("issue", "close", n)
+                    issue["state"] = "closed"   # keep in-memory state consistent until the next sync (#75)
                 meta["status"].pop(n, None)
             elif status in ("backlog", "in_progress"):
                 if closed:
                     self._gh("issue", "reopen", n)
+                    issue["state"] = "open"     # (#75)
                 meta["status"][n] = status
             if order:
                 meta["order"] = [str(x) for x in order]
