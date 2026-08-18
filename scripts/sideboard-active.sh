@@ -36,7 +36,13 @@ launch() {
 }
 
 resp="$(post)"
-[ -z "$resp" ] && { launch; resp="$(post)"; }    # router was down -> start it
+# Router unreachable -> start it, but rate-limit to one relaunch/60s. If /active keeps
+# failing (e.g. a persistent 500), an unthrottled relaunch would pkill -9 + restart on
+# EVERY prompt — a storm that can itself corrupt sidecars (#60).
+if [ -z "$resp" ]; then
+  last=$(cat /tmp/sideboard-relaunch.stamp 2>/dev/null || echo 0)
+  [ "$(( $(date +%s) - last ))" -ge 60 ] && { launch; resp="$(post)"; }
+fi
 
 # Self-heal (#46): a router that's up but can't read ~/Documents (macOS TCC denied
 # the process on a bad launch) serves broken boards. Relaunch it from THIS hook

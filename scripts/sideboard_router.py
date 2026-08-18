@@ -283,6 +283,18 @@ class Project:
                               check=True, text=True, capture_output=True).stdout
 
     # -- sidecar (github mode) ------------------------------------------------
+    def _quarantine_meta(self, reason):
+        # A corrupt sidecar must not crash the loader (it would blank the board with
+        # no reason AND make /active 500 every prompt -> relaunch storm, #60). Move it
+        # aside and rebuild from GitHub on the next sync.
+        bad = self.meta_path + ".corrupt.bak"
+        try:
+            os.replace(self.meta_path, bad)
+        except OSError:
+            pass
+        print(f"[router] {reason}; quarantined sidecar -> {bad}", file=sys.stderr, flush=True)
+        self.error = "Sidecar was corrupt — quarantined and rebuilding from GitHub."
+
     def _load_meta(self):
         try:
             m = json.load(open(self.meta_path))
@@ -290,6 +302,9 @@ class Project:
             m = {}
         except PermissionError:
             self.error = _PERM_MSG      # sidecar in ~/Documents blocked by macOS TCC (#46)
+            m = {}
+        except (json.JSONDecodeError, ValueError):
+            self._quarantine_meta("corrupt meta.json on load")
             m = {}
         return {"status": dict(m.get("status", {})), "order": [str(n) for n in m.get("order", [])],
                 "tag_colors": dict(m.get("tag_colors", {})), "next_color": m.get("next_color", 0),
@@ -303,11 +318,16 @@ class Project:
                   "tag_colors": {k: meta["tag_colors"][k] for k in sorted(meta.get("tag_colors", {}))},
                   "sequences": [{"id": s["id"], "title": s["title"], "items": [int(x) for x in s["items"]]}
                                 for s in meta.get("sequences", [])]}
+        tmp = f"{self.meta_path}.tmp.{os.getpid()}"
         try:
             os.makedirs(os.path.dirname(self.meta_path), exist_ok=True)
-            json.dump(stable, open(self.meta_path, "w"), indent=2)
+            with open(tmp, "w") as f:
+                json.dump(stable, f, indent=2)
+            os.replace(tmp, self.meta_path)   # atomic: never leaves a truncated sidecar (#60)
         except PermissionError:
             self.error = _PERM_MSG      # sidecar in ~/Documents blocked by macOS TCC (#46)
+            try: os.remove(tmp)
+            except OSError: pass
 
     def migrate(self):
         """Upgrade an older sidecar to the current schema."""
@@ -317,6 +337,9 @@ class Project:
             return
         except PermissionError:
             self.error = _PERM_MSG      # sidecar in ~/Documents blocked by macOS TCC (#46)
+            return
+        except (json.JSONDecodeError, ValueError):
+            self._quarantine_meta("corrupt meta.json on migrate")   # else /active 500s every prompt (#60)
             return
         v = int(raw.get("schema", 0))
         if v >= SCHEMA:
