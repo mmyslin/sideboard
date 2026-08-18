@@ -4,7 +4,7 @@
 
 Sideboard shows your repo's GitHub Issues as a live roadmap board that you and [Claude Code](https://claude.com/claude-code) drive together. Quickly log ideas for the backlog, start Claude on the next issue, and reason across your roadmap **and** codebase in context — no need to jump out of Claude Code to an external board.
 
-![Sideboard: a live roadmap board pinned beside Claude Code chat, with a rainbow of feature tags across Backlog and Done](sideboard.png)
+<img width="3300" height="1771" alt="sideboard" src="https://github.com/user-attachments/assets/fa8e6c52-b8d9-4615-9c85-79ada1c75024" />
 
 Claude Code has no API for custom side panels, but its desktop app lets you pin any local web page in the **preview pane** next to chat. Sideboard is that page: a zero-dependency HTML board whose source of truth is your **GitHub Issues**. A companion **skill** teaches Claude to keep the board current with `gh` during normal conversation — filing what you decide to build, moving cards to *In Progress*, closing them *Done* when work lands. It polls every 2 seconds, so it moves on its own.
 
