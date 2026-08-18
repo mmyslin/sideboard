@@ -673,8 +673,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 print(f"[router] board error (project={pid}): {e}", file=sys.stderr, flush=True)
                 board = empty
             return self._send(200, json.dumps(board, ensure_ascii=False))
+        # Don't serve the board HTML for stray /api/ GETs — return JSON 404 so a
+        # typo'd or GET-instead-of-POST API call reads as an error, not success (#67).
+        if path.startswith("/api/"):
+            return self._send(404, '{"ok": false, "error": "not found"}')
         # Fallback: serve the board for "/", "/roadmap-board.html", and ANY other GET path — so a
         # stale/odd pane URL restored on session return still renders the roadmap, not a 404.
+        # (The client fetches /roadmap.json absolute, so it loads data even from a nested path.)
         v = str(int(os.path.getmtime(BOARD_HTML)))
         html = open(BOARD_HTML, encoding="utf-8").read().replace(
             "</head>", f'<script>window.__BV="{v}";</script>\n</head>', 1)

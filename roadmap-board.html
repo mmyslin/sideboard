@@ -700,14 +700,14 @@ function setStatus(state, data) {
 async function poll() {
   try {
     const pinQ = pinnedId ? "&project=" + encodeURIComponent(pinnedId) : "";
-    const res = await fetch("roadmap.json?_=" + Date.now() + pinQ, { cache: "no-store" });
+    const res = await fetch("/roadmap.json?_=" + Date.now() + pinQ, { cache: "no-store" });   // absolute: works even if the pane URL has a stale path (#67)
     if (!res.ok) throw new Error(res.status);
     const raw = await res.text();
     const data = JSON.parse(raw);
     latestData = data;   // keep fresh for the sequence modal (#50)
     if (data.project_id !== undefined) renderedProjectId = data.project_id;   // route writes here (#58)
     if (window.__BV && data.board_version && data.board_version !== window.__BV) {
-      location.replace(location.pathname + "?_bv=" + data.board_version + pinQ); return;   // stale HTML -> reload fresh, keep the pin
+      location.replace("/?_bv=" + data.board_version + pinQ); return;   // stale HTML -> reload fresh at root, keep the pin (#67)
     }
     // re-render only when the CONTENT changes — ignore updated_at, which the
     // router re-stamps every sync (~45s) and would otherwise force a needless
@@ -885,7 +885,7 @@ document.getElementById("board").addEventListener("click", (e) => {
     menu.innerHTML = rows.join("");
   }
   async function open() {
-    try { projects = ((await (await fetch("projects?_=" + Date.now(), { cache: "no-store" })).json()).projects) || []; }
+    try { projects = ((await (await fetch("/projects?_=" + Date.now(), { cache: "no-store" })).json()).projects) || []; }
     catch { projects = []; }
     draw();
     menu.hidden = false; btn.setAttribute("aria-expanded", "true");
