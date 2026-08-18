@@ -11,12 +11,21 @@ is **GitHub-only** — there is no `roadmap.json` / local-file mode.
 - **Sequences** — ordered dependency chains of ≥2 issues (in `.sideboard/meta.json`),
   managed via the `/roadmap-sequence` command + the router's `/api/seq/*`. Honor them
   when working: starting a sequenced issue with an unfinished predecessor → check in
-  first; closing one → suggest the next. See `skill/SKILL.md` → "Acting on a sequenced
-  issue".
+  first; closing one → suggest the next. See `skills/sideboard/SKILL.md` → "Acting on
+  a sequenced issue".
 - **Repo layout is the plugin layout (#12):** `commands/` (the `sideboard:`
   slash commands), `skills/sideboard/SKILL.md`, `scripts/` (router + shell
   scripts), `hooks/hooks.json`, and `.claude-plugin/{plugin,marketplace}.json`.
   `install.sh` is the legacy installer; it copies out of `skills/`+`scripts/`.
+- **Releasing (version-bump convention):** once listed in the community
+  marketplace, Anthropic's CI auto-advances the catalog's commit-SHA pin on every
+  push — but users only *receive* an update when **`version` in
+  `.claude-plugin/plugin.json` changes**. So push freely (docs, refactors, WIP);
+  **bump `version` (semver) only when you want users to get the change** — that
+  bump is the deliberate "ship it" lever. Keep the marketplace entry free of a
+  `version` field so `plugin.json` stays the single source of truth. No
+  re-submission is needed for updates (whether each push is re-screened is
+  undocumented).
 - **Run the board:** `scripts/sideboard-up.sh` — starts the **router**
   (`scripts/sideboard_router.py`) on :7777, which follows the *active* project and
   serves its board. Then open the pane once per project (or use `/sideboard:roadmap`).
@@ -33,8 +42,9 @@ is **GitHub-only** — there is no `roadmap.json` / local-file mode.
   that sidecar exists. Bootstrap a new repo with
   `mkdir -p .sideboard && printf '{"schema": 1}\n' > .sideboard/meta.json` (commit
   it); the router reconciles it from the issues on first sync.
-- Design + phases: `docs/github-sync-design.md` (#15). Distribution plan: ship as
-  a Claude Code plugin (#12). Naming decision: #39.
+- Design + phases: `docs/github-sync-design.md` (#15). Distribution: shipped as a
+  Claude Code plugin (#12) — community-marketplace submission is the remaining
+  discoverability step. Naming decision: #39.
 
-The global `sideboard` skill (`skill/SKILL.md`) documents this same GitHub-only
-model — this file is just the repo-specific pointer.
+The global `sideboard` skill (`skills/sideboard/SKILL.md`) documents this same
+GitHub-only model — this file is just the repo-specific pointer.
