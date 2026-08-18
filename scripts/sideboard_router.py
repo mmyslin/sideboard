@@ -43,6 +43,7 @@ _ALLOWED_ORIGINS = frozenset({f"http://127.0.0.1:{PORT}", f"http://localhost:{PO
 SYNC_SECONDS = int(os.environ.get("SIDEBOARD_SYNC_SECONDS", "45"))
 MAX_BODY = 1 << 20     # cap POST bodies at 1 MiB — a huge Content-Length shouldn't force a big alloc (#74)
 ISSUE_LIMIT = int(os.environ.get("SIDEBOARD_ISSUE_LIMIT", "1000"))   # gh issue list page size (#76)
+GH_TIMEOUT = int(os.environ.get("SIDEBOARD_GH_TIMEOUT", "60"))       # per-gh-call bound, seconds (#85)
 ERROR_RETRY_SECONDS = int(os.environ.get("SIDEBOARD_ERROR_RETRY_SECONDS", "5"))   # retry faster while errored (#52)
 SCHEMA = 2   # .sideboard/meta.json schema version (migrated forward on load); v2 added sequences (#47)
 
@@ -305,6 +306,7 @@ class Project:
         self._detect_err = None    # set by _detect_repo when access was denied (EPERM); surfaced by sync (#46)
         self.repo = self._detect_repo()
         self.issues = []
+        self.issues_complete = True   # False when the last fetch hit the page limit (#76/#84)
         self.synced_at = None      # stamped on each sync; keeps updated_at stable between syncs (#42)
         self.lock = threading.RLock()
 
@@ -339,9 +341,16 @@ class Project:
     def _gh(self, *args):
         # Run from a never-sandboxed cwd and target the repo explicitly, so the
         # call never depends on ~/Documents being accessible to this process (#46).
-        extra = ["-R", self.repo] if self.repo else []
-        return subprocess.run(["gh", *args, *extra], cwd=SAFE_CWD,
-                              check=True, text=True, capture_output=True).stdout
+        # A repo-less project must NEVER call gh without -R: gh would resolve the
+        # target from whatever checkout owns the cwd and silently file the user's
+        # content in an unrelated (possibly public) repo (#83).
+        if not self.repo:
+            raise RuntimeError("no GitHub repo detected for this project")
+        # Bounded: one wedged call (proxy black-hole, credential prompt) must not
+        # halt the shared serial sync loop forever (#85).
+        return subprocess.run(["gh", *args, "-R", self.repo], cwd=SAFE_CWD,
+                              check=True, text=True, capture_output=True,
+                              timeout=GH_TIMEOUT).stdout
 
     # -- sidecar (github mode) ------------------------------------------------
     def _quarantine_meta(self, reason):
@@ -474,6 +483,9 @@ class Project:
             try:
                 issues = json.loads(self._gh("issue", "list", "--state", "all", "--limit", str(ISSUE_LIMIT),
                                              "--json", "number,title,body,state,labels"))
+            except subprocess.TimeoutExpired:
+                self.error = _NET_MSG             # treat a wedged gh like a network blip (#85)
+                return
             except subprocess.CalledProcessError as e:
                 stderr = (e.stderr or "").strip()
                 self.error = (_PERM_MSG if _is_perm_error(stderr) else
@@ -483,11 +495,14 @@ class Project:
                 return
             self.issues = issues
             self.error = None                     # clear stale errors; the sidecar ops below may re-set it
-            complete = len(issues) < ISSUE_LIMIT  # a full page means more issues exist beyond it (#76)
-            if not complete:
+            # A full page means more issues exist beyond it. Store the flag on the
+            # Project — every later reconcile (sequence writes included) must honor
+            # it, or a seq edit re-runs the purge #76 removed (#84).
+            self.issues_complete = len(issues) < ISSUE_LIMIT
+            if not self.issues_complete:
                 print(f"[router] {self.repo}: issue list hit the {ISSUE_LIMIT} limit — not pruning "
                       f"missing issues (raise SIDEBOARD_ISSUE_LIMIT).", file=sys.stderr, flush=True)
-            self._save_meta(self._reconcile(self.issues, self._load_meta(), complete))
+            self._save_meta(self._reconcile(self.issues, self._load_meta(), self.issues_complete))
             if self.error:                        # _load_meta/_save_meta hit a permission wall (#46)
                 return
             self.synced_at = _now()
@@ -552,7 +567,12 @@ class Project:
                 # Only accept numbers this project knows — a stale pane's order from
                 # ANOTHER project must not wholesale-replace this one's curation (#80).
                 known = self._present() | set(meta["order"])
-                meta["order"] = [str(x) for x in order if str(x) in known]
+                new_order = [str(x) for x in order if str(x) in known]
+                if not self.issues_complete:
+                    # Truncated fetch: the client only rendered (and re-ordered) the
+                    # fetched page — keep beyond-page issues' positions appended (#84).
+                    new_order += [n for n in meta["order"] if n not in new_order]
+                meta["order"] = new_order
             self._save_meta(meta)
         self.sync()
 
@@ -567,7 +587,8 @@ class Project:
 
     def label(self, number, add=None, remove=None):
         if add:
-            subprocess.run(["gh", "label", "create", "-R", self.repo, "--", add], cwd=SAFE_CWD, capture_output=True, text=True)
+            subprocess.run(["gh", "label", "create", "-R", self.repo, "--", add], cwd=SAFE_CWD,
+                           capture_output=True, text=True, timeout=GH_TIMEOUT)
             self._gh("issue", "edit", str(number), "--add-label", add)
         if remove:
             self._gh("issue", "edit", str(number), "--remove-label", remove)
@@ -587,7 +608,10 @@ class Project:
         with self.lock:
             meta = self._load_meta()
             res = mutate(meta["sequences"])
-            self._save_meta(self._reconcile(self.issues, meta) if self.issues else meta)
+            # Honor the truncation flag here too — reconciling a truncated page with
+            # complete=True would purge every beyond-page record on a seq edit (#84).
+            self._save_meta(self._reconcile(self.issues, meta, self.issues_complete)
+                            if self.issues else meta)
         return res
 
     def seq_create(self, items, title=""):
@@ -676,6 +700,8 @@ def set_active(title):
 
 # ---- HTTP ------------------------------------------------------------------
 class Handler(http.server.BaseHTTPRequestHandler):
+    timeout = 30   # bound each request read — a stalled/dribbling body must not pin a thread forever (#99)
+
     def log_message(self, *a):
         pass
 
@@ -812,11 +838,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._send(404, "{}")
         except Exception as e:
             print(f"[router] POST {path} error: {e}", file=sys.stderr, flush=True)
-            self._send(500, json.dumps({"ok": False, "error": str(e)}))
+            # Detail stays in the log — str(e) can embed the full gh argv (repo
+            # slug, issue title/body) or a filesystem path (#98).
+            self._send(500, '{"ok": false, "error": "internal error (see router log)"}')
 
 
 def sync_loop():
     backoff = ERROR_RETRY_SECONDS
+    last_full = time.monotonic()
     while True:
         active = STATE["active"]
         # Fast-retry ONLY a transient network error, and only the errored project,
@@ -826,9 +855,18 @@ def sync_loop():
             time.sleep(min(backoff, SYNC_SECONDS))
             backoff = min(backoff * 2, SYNC_SECONDS)
             _safe_sync(active)
+            # _NET_MSG can be repo-SPECIFIC (a monorepo whose issue list times out
+            # while the network is fine) — other pinned boards must not silently
+            # starve behind it: keep the full sweep on its normal cadence (#86).
+            if time.monotonic() - last_full >= SYNC_SECONDS:
+                last_full = time.monotonic()
+                for p in list(CACHE.values()):
+                    if p is not active:
+                        _safe_sync(p)
         else:
             backoff = ERROR_RETRY_SECONDS
             time.sleep(SYNC_SECONDS)
+            last_full = time.monotonic()
             for p in list(CACHE.values()):     # keep the active project AND any pinned/viewed one fresh
                 _safe_sync(p)
 
