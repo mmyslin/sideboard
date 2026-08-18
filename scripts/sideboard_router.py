@@ -108,7 +108,10 @@ def _load_registry():
 
 def _save_registry(reg):
     os.makedirs(os.path.dirname(REGISTRY), exist_ok=True)
-    json.dump(reg, open(REGISTRY, "w"), indent=2)
+    tmp = f"{REGISTRY}.tmp.{os.getpid()}"
+    with open(tmp, "w") as f:
+        json.dump(reg, f, indent=2)
+    os.replace(tmp, REGISTRY)      # atomic; never leaves a torn registry (#77)
 
 
 def _migrate_registry():
@@ -147,31 +150,34 @@ def resolve_dir(title):
     token (`tracker`) no longer half-matches any title mentioning it."""
     if not title:
         return None
-    reg = _load_registry()
-    mapped = reg.get(title)
-    if mapped and os.path.isdir(mapped):
-        return mapped
-    tt = _tokens(title)
-    if not tt:
-        return None
-    best = None                            # ((score, overlap), dir)
-    for d in _candidate_dirs():
-        dt = _tokens(os.path.basename(d))
-        if not dt:
-            continue
-        overlap = len(tt & dt)
-        score = overlap / len(dt)          # fraction of the dir's name tokens found in the title
-        if score <= 0.5:                   # require a strict majority, not just half
-            continue
-        cand = ((score, overlap), d)
-        if best is None or cand[0] > best[0]:   # higher score, then more matched tokens (specificity)
-            best = cand
-    if best is None:
-        return None
-    if best[0][0] >= 1.0:                  # persist only confident, full-coverage matches
-        reg[title] = best[1]
-        _save_registry(reg)
-    return best[1]
+    # Guard the registry read-modify-write: concurrent /active handler threads must
+    # not each load the same snapshot and clobber the other's new mapping (#77).
+    with LOCK:
+        reg = _load_registry()
+        mapped = reg.get(title)
+        if mapped and os.path.isdir(mapped):
+            return mapped
+        tt = _tokens(title)
+        if not tt:
+            return None
+        best = None                            # ((score, overlap), dir)
+        for d in _candidate_dirs():
+            dt = _tokens(os.path.basename(d))
+            if not dt:
+                continue
+            overlap = len(tt & dt)
+            score = overlap / len(dt)          # fraction of the dir's name tokens found in the title
+            if score <= 0.5:                   # require a strict majority, not just half
+                continue
+            cand = ((score, overlap), d)
+            if best is None or cand[0] > best[0]:   # higher score, then more matched tokens (specificity)
+                best = cand
+        if best is None:
+            return None
+        if best[0][0] >= 1.0:                  # persist only confident, full-coverage matches
+            reg[title] = best[1]
+            _save_registry(reg)
+        return best[1]
 
 
 def project_name(d):
