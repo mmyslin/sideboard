@@ -5,8 +5,13 @@
   "plugins": [
     {
       "name": "sideboard",
-      "description": "Your GitHub Issues as a live board in Claude Code.",
-      "source": { "source": "github", "repo": "mmyslin/sideboard" }
+      "description": "Your GitHub Issues as a live roadmap board pinned beside Claude Code chat — filed, moved, and closed by Claude as you work, plus code-aware commands to suggest, sequence, and clean up the backlog.",
+      "source": { "source": "github", "repo": "mmyslin/sideboard" },
+      "author": { "name": "Mark Myslin", "url": "https://github.com/mmyslin" },
+      "homepage": "https://github.com/mmyslin/sideboard",
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": ["roadmap", "kanban", "github-issues", "board", "project-management"]
     }
   ]
 }
