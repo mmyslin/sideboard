@@ -18,9 +18,6 @@ except Exception:
 print(json.dumps({'session_title': t}) if t else '')
 " 2>/dev/null)
 
-# No title (e.g. SessionStart source=startup) → nothing to route.
-[ -z "$body" ] && exit 0
-
 # POST the active project; echo the JSON reply (empty if the router is unreachable).
 post() {
   curl -sf -m 1 -X POST http://127.0.0.1:7777/active \
@@ -34,6 +31,18 @@ launch() {
   date +%s >/tmp/sideboard-relaunch.stamp
   sleep 1
 }
+
+# Ensure the board server is up BEFORE the title guard, so a titleless session
+# (e.g. SessionStart source=startup, which carries no session_title) still boots
+# it — otherwise the "hook starts the board for you" promise was conditional (#65).
+# Rate-limited to one relaunch/60s.
+if ! curl -sf -m 1 http://127.0.0.1:7777/healthz >/dev/null 2>&1; then
+  last=$(cat /tmp/sideboard-relaunch.stamp 2>/dev/null || echo 0)
+  [ "$(( $(date +%s) - last ))" -ge 60 ] && launch
+fi
+
+# No title (e.g. SessionStart source=startup) → router is up, but nothing to route.
+[ -z "$body" ] && exit 0
 
 resp="$(post)"
 # Router unreachable -> start it, but rate-limit to one relaunch/60s. If /active keeps
