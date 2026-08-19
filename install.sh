@@ -16,10 +16,12 @@ SETTINGS="${CLAUDE_SETTINGS:-$HOME/.claude/settings.json}"
 
 # One-time cleanup: remove the pre-rename VibeMap install so it doesn't linger
 # beside the new one (the stale hook is also stripped from settings.json below).
-# Guard it: only remove a dir that actually looks like the old skill install, so
-# an unrelated ~/.claude/skills/vibemap the user happens to have isn't nuked (#132).
+# Fingerprint it by a file ONLY our old install shipped — its router script. The
+# earlier guard also accepted SKILL.md, but EVERY skill dir has a SKILL.md, so an
+# unrelated ~/.claude/skills/vibemap the user happens to keep would have matched
+# and been rm -rf'd (#144). Requiring the router script can't false-positive.
 OLD_VIBEMAP="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}/vibemap"
-if [ -d "$OLD_VIBEMAP" ] && { [ -e "$OLD_VIBEMAP/SKILL.md" ] || [ -e "$OLD_VIBEMAP/vibemap_router.py" ] || [ -e "$OLD_VIBEMAP/sideboard_router.py" ]; }; then
+if [ -d "$OLD_VIBEMAP" ] && { [ -e "$OLD_VIBEMAP/vibemap_router.py" ] || [ -e "$OLD_VIBEMAP/github_companion.py" ]; }; then
   rm -rf "$OLD_VIBEMAP"
 fi
 
@@ -61,7 +63,9 @@ for event in ("SessionStart", "UserPromptSubmit"):
     groups = [g for g in hooks.get(event, []) if not is_ours(g)]   # drop our prior group(s)
     # Quote the path (like the plugin's hooks.json does): the command is run by a
     # shell, and an unquoted $HOME/CLAUDE_SKILLS_DIR with a space word-splits (#103).
-    groups.append({"hooks": [{"type": "command", "command": f'"{cmd}"'}]})
+    # Carry the same timeout: 8 the plugin's hooks.json sets, or a legacy install's
+    # hook has no latency hard-cap at all — voiding the #119 guarantee (#150).
+    groups.append({"hooks": [{"type": "command", "command": f'"{cmd}"', "timeout": 8}]})
     hooks[event] = groups
 
 os.makedirs(os.path.dirname(settings_path), exist_ok=True)

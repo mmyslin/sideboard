@@ -56,6 +56,7 @@ launch() {
     return 1
   fi
   nohup python3 sideboard_router.py >>"$STATE_DIR/sideboard-router.log" 2>&1 &   # append (#105)
+  echo $! >"$STATE_DIR/sideboard-router.pid"   # record our router's PID for ps-independent reclaim (#151)
   for _ in $(seq 1 40); do is_router "$(health)" && break; sleep 0.05; done   # ready within ~2s
 }
 
@@ -78,6 +79,13 @@ if is_router "$h"; then
     fi
   fi
 else
-  launch
-  is_router "$(health)" && echo "started -> $url" || echo "started (warming up) -> $url"
+  # Honor launch()'s exit status: a foreign process on the port makes it refuse
+  # (return 1) rather than kill, and printing "started -> url" then would be a lie —
+  # the router isn't up and the board would 403/empty (#153).
+  if launch; then
+    is_router "$(health)" && echo "started -> $url" || echo "started (warming up) -> $url"
+  else
+    echo "could NOT start: port $PORT is held by a non-Sideboard process (see $STATE_DIR/sideboard-router.log). Set SIDEBOARD_PORT to run on another port." >&2
+    exit 1
+  fi
 fi

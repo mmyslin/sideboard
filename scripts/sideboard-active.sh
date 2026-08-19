@@ -26,11 +26,20 @@ print(json.dumps({'session_title': t}) if t else '')
 
 # POST the active project; echo the JSON reply (empty if the router is unreachable).
 # Writes require the per-install secret the router keeps in ~/.claude (#89).
+#
+# The token is fed to curl as a header read from STDIN (`-H @-`), never as a
+# command-line argument. Process argv is world-readable (`ps aux` on macOS,
+# /proc/PID/cmdline on default Linux), so `-H "X-Sideboard-Token: $(cat …)"` would
+# expose the 0600 per-install secret to any co-resident user — on EVERY prompt,
+# defeating the very file permission the token relies on (#138). `cat <tokenfile>`
+# keeps only the filename in argv; the secret flows through the pipe. The token
+# file has no trailing newline, so the piped line is a single well-formed header.
 post() {
-  curl -sf -m 1 -X POST "http://127.0.0.1:$PORT/active" \
-    -H 'Content-Type: application/json' \
-    -H "X-Sideboard-Token: $(cat "$STATE_DIR/sideboard-token" 2>/dev/null)" \
-    -d "$body" 2>/dev/null
+  { printf 'X-Sideboard-Token: '; cat "$STATE_DIR/sideboard-token" 2>/dev/null; } \
+    | curl -sf -m 1 -X POST "http://127.0.0.1:$PORT/active" \
+        -H 'Content-Type: application/json' \
+        -H @- \
+        -d "$body" 2>/dev/null
 }
 healthz() { curl -sf -m 1 "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1; }
 
@@ -52,6 +61,13 @@ port_listener_pids() {
 # Is PID $1 one of OUR router processes? Guards the kill so we never SIGKILL an
 # unrelated service that merely happens to hold the port (#110).
 is_our_router_pid() {
+  # Definitely ours if it matches the PID our launcher recorded. This positive works
+  # even when `ps` returns nothing — a transient ps glitch, or Linux hidepid — which
+  # otherwise misclassified our OWN wedged router as "foreign" and blocked reclaim
+  # forever (a wedged router keeps failing healthz, so every retry re-misclassified,
+  # #151). Fall back to the command match for a router started another way; if
+  # neither confirms, treat as foreign so an unrelated service is never killed (#110).
+  [ -n "$1" ] && [ "$1" = "$(cat "$STATE_DIR/sideboard-router.pid" 2>/dev/null)" ] && return 0
   case "$(ps -o command= -p "$1" 2>/dev/null)" in
     *sideboard_router.py*|*vibemap_router.py*|*github_companion.py*) return 0 ;;
     *) return 1 ;;
@@ -81,6 +97,7 @@ launch() {
     return 1
   fi
   nohup python3 "$HERE/sideboard_router.py" >>"$STATE_DIR/sideboard-router.log" 2>&1 &   # append: racing launches must not truncate each other's log (#105)
+  echo $! >"$STATE_DIR/sideboard-router.pid"   # record our router's PID so is_our_router_pid can reclaim it even when ps can't identify it (#151)
   for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do   # wait for readiness (~1.5s cap) instead of a flat sleep 1 (#119)
     healthz && break
     sleep 0.1
@@ -94,6 +111,24 @@ launch() {
 if ! healthz; then
   last=$(cat "$STATE_DIR/sideboard-relaunch.stamp" 2>/dev/null || echo 0)
   [ "$(( $(date +%s) - last ))" -ge 60 ] && launch
+else
+  # Router is up — but a detached daemon survives plugin updates and its only other
+  # relaunch trigger is a liveness failure, so a healthy router keeps running STALE
+  # code after an update (the board force-loads new HTML against the old backend).
+  # If the running router's code version differs from the script now on disk,
+  # relaunch to adopt the update. Throttled with its own stamp so a persistent
+  # mismatch can't relaunch every prompt. python3 is already a hard dependency.
+  running_ver=$(curl -sf -m 1 "http://127.0.0.1:$PORT/healthz" 2>/dev/null \
+    | python3 -c "import sys,json;print(json.load(sys.stdin).get('code_ver',''))" 2>/dev/null)
+  disk_ver=$(python3 -c "import os;print(int(os.path.getmtime('$HERE/sideboard_router.py')))" 2>/dev/null)
+  if [ -n "$running_ver" ] && [ -n "$disk_ver" ] && [ "$running_ver" != "$disk_ver" ]; then
+    last=$(cat "$STATE_DIR/sideboard-codever.stamp" 2>/dev/null || echo 0)
+    if [ "$(( $(date +%s) - last ))" -ge 60 ]; then
+      date +%s >"$STATE_DIR/sideboard-codever.stamp"
+      echo "[sideboard] router code changed on disk (running $running_ver, on-disk $disk_ver) — relaunching to update (#141)" >>"$STATE_DIR/sideboard-router.log"
+      launch
+    fi
+  fi
 fi
 
 # No title (e.g. SessionStart source=startup) → router is up, but nothing to route.

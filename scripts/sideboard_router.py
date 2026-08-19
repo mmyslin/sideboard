@@ -45,6 +45,16 @@ MAX_BODY = 1 << 20     # cap POST bodies at 1 MiB — a huge Content-Length shou
 ISSUE_LIMIT = int(os.environ.get("SIDEBOARD_ISSUE_LIMIT", "1000"))   # gh issue list page size (#76)
 GH_TIMEOUT = int(os.environ.get("SIDEBOARD_GH_TIMEOUT", "60"))       # per-gh-call bound, seconds (#85)
 
+# Identity of the code THIS daemon is running. The router is started detached and
+# survives every session and plugin update, and the only relaunch triggers are
+# liveness/access failures — so a healthy router keeps serving OLD code forever
+# after an update. Expose the running script's mtime on /healthz so the launcher
+# can notice the on-disk script has changed and relaunch to pick it up (#141).
+try:
+    CODE_VER = str(int(os.path.getmtime(os.path.abspath(__file__))))
+except OSError:
+    CODE_VER = "0"
+
 # ---- write auth (#89) ------------------------------------------------------
 # Host/Origin checks stop BROWSERS (CSRF/rebind); a native local process — any
 # other OS user on the machine — can forge both. So both the state-changing
@@ -870,7 +880,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             # sensitive part — and a co-resident OS user could poll it out of the
             # unauthenticated response. Reveal `active` only to a token-bearing caller;
             # everyone else gets liveness + access status, which disclose nothing (#148).
-            info = {"router": True, "access_ok": access_ok()}
+            info = {"router": True, "access_ok": access_ok(), "code_ver": CODE_VER}
             if self._token_ok():
                 info["active"] = p.title if p else None
             return self._send(200, json.dumps(info))
