@@ -373,14 +373,18 @@ class Project:
         self.issues = []
         self.issues_complete = True   # False when the last fetch hit the page limit (#76/#84)
         self.synced_at = None      # stamped on each sync; keeps updated_at stable between syncs (#42)
+        self._first_load_at = 0.0  # monotonic stamp throttling the poll-triggered first-load sync (#136)
         self.lock = threading.RLock()
 
     @staticmethod
     def _migrate_sidecar(path):
         old, new = os.path.join(path, ".vibemap"), os.path.join(path, ".sideboard")
         if os.path.isdir(old) and not os.path.exists(new):
-            os.rename(old, new)
-            print(f"[sideboard] migrated sidecar {old} -> {new}", flush=True)
+            try:
+                os.rename(old, new)
+                print(f"[sideboard] migrated sidecar {old} -> {new}", flush=True)
+            except OSError:
+                pass   # a concurrent same-project construction (#149) already moved it — fine
 
     def _detect_repo(self):
         # The one call that must read the project dir — to learn owner/repo.
@@ -431,29 +435,47 @@ class Project:
         self.error = "Sidecar was corrupt — quarantined and rebuilding from GitHub."
 
     def _load_meta(self):
+        empty = {"status": {}, "order": [], "tag_colors": {}, "next_color": 0, "sequences": []}
         try:
             m = json.load(open(self.meta_path))
+            # Shape coercion lives INSIDE the guarded block: a sidecar that parses as
+            # JSON but has the wrong shape (`status` a list, `order` a non-iterable, a
+            # top-level array) raises TypeError/AttributeError here, and must be
+            # quarantined-and-rebuilt exactly like a parse error — not propagate out and
+            # leave the board silently blank forever (#137).
+            return {"status": dict(m.get("status", {})), "order": [str(n) for n in m.get("order", [])],
+                    "tag_colors": dict(m.get("tag_colors", {})), "next_color": m.get("next_color", 0),
+                    "sequences": _norm_sequences(m.get("sequences", []))}
         except FileNotFoundError:
-            m = {}
+            return empty
         except PermissionError:
             self.error = _PERM_MSG      # sidecar in ~/Documents blocked by macOS TCC (#46)
-            m = {}
-        except (json.JSONDecodeError, ValueError):
-            self._quarantine_meta("corrupt meta.json on load")
-            m = {}
-        return {"status": dict(m.get("status", {})), "order": [str(n) for n in m.get("order", [])],
-                "tag_colors": dict(m.get("tag_colors", {})), "next_color": m.get("next_color", 0),
-                "sequences": _norm_sequences(m.get("sequences", []))}
+            return empty
+        except (json.JSONDecodeError, ValueError, TypeError, AttributeError):
+            self._quarantine_meta("corrupt or malformed meta.json on load")
+            return empty
 
     def _save_meta(self, meta):
-        stable = {"schema": SCHEMA,
-                  "status": {k: meta["status"][k] for k in sorted(meta["status"], key=int)},
-                  "order": meta["order"],
-                  "next_color": meta.get("next_color", 0),
-                  "tag_colors": {k: meta["tag_colors"][k] for k in sorted(meta.get("tag_colors", {}))},
-                  "sequences": [{"id": s["id"], "title": s["title"], "items": [int(x) for x in s["items"]]}
-                                for s in meta.get("sequences", [])]}
-        tmp = f"{self.meta_path}.tmp.{os.getpid()}"
+        try:
+            stable = {"schema": SCHEMA,
+                      "status": {k: meta["status"][k] for k in sorted(meta["status"], key=int)},
+                      "order": meta["order"],
+                      "next_color": meta.get("next_color", 0),
+                      "tag_colors": {k: meta["tag_colors"][k] for k in sorted(meta.get("tag_colors", {}))},
+                      "sequences": [{"id": s["id"], "title": s["title"], "items": [int(x) for x in s["items"]]}
+                                    for s in meta.get("sequences", [])]}
+        except (ValueError, TypeError, KeyError):
+            # Non-numeric issue keys / malformed sequence items reached here — a
+            # hand-edited or merge-mangled sidecar. Quarantine and let the next sync
+            # rebuild, rather than raise out of the sync/seq write endpoints (#137).
+            self._quarantine_meta("malformed meta.json on save")
+            return
+        # Unique per THREAD, not just per pid: get_project builds a brand-new project
+        # OUTSIDE the global lock (#115), so two threads racing the same never-cached
+        # project both run migrate()->_save_meta in this one process. A shared
+        # `.tmp.<pid>` let them truncate each other's half-written temp before the
+        # atomic replace; a per-thread suffix keeps each write self-contained (#149).
+        tmp = f"{self.meta_path}.tmp.{os.getpid()}.{threading.get_ident()}"
         try:
             os.makedirs(os.path.dirname(self.meta_path), exist_ok=True)
             with open(tmp, "w") as f:
@@ -476,15 +498,19 @@ class Project:
         """Upgrade an older sidecar to the current schema."""
         try:
             raw = json.load(open(self.meta_path))
+            v = int(raw.get("schema", 0))   # guarded: `schema` null/list, or a top-level
+                                            # array (raw.get -> AttributeError), must be
+                                            # quarantined, not raise out of migrate() —
+                                            # which runs BEFORE the Project is cached, so an
+                                            # unguarded raise 500s /active on EVERY prompt (#137)
         except FileNotFoundError:
             return
         except PermissionError:
             self.error = _PERM_MSG      # sidecar in ~/Documents blocked by macOS TCC (#46)
             return
-        except (json.JSONDecodeError, ValueError):
-            self._quarantine_meta("corrupt meta.json on migrate")   # else /active 500s every prompt (#60)
+        except (json.JSONDecodeError, ValueError, TypeError, AttributeError):
+            self._quarantine_meta("corrupt or malformed meta.json on migrate")   # else /active 500s every prompt (#60)
             return
-        v = int(raw.get("schema", 0))
         if v >= SCHEMA:
             return
         shutil.copy(self.meta_path, f"{self.meta_path}.v{v}.bak")
@@ -839,8 +865,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/healthz":
             p = STATE["active"]
-            return self._send(200, json.dumps({"router": True, "active": p.title if p else None,
-                                                "access_ok": access_ok()}))
+            # /healthz stays open (the hook and launcher poll liveness without a token),
+            # but the active session TITLE is effectively a project name — often the
+            # sensitive part — and a co-resident OS user could poll it out of the
+            # unauthenticated response. Reveal `active` only to a token-bearing caller;
+            # everyone else gets liveness + access status, which disclose nothing (#148).
+            info = {"router": True, "access_ok": access_ok()}
+            if self._token_ok():
+                info["active"] = p.title if p else None
+            return self._send(200, json.dumps(info))
         # /projects and /roadmap.json expose private-repo issue titles/bodies/labels
         # and home-directory project paths, and a first-load /roadmap.json drives gh
         # subprocesses + a sidecar write. Loopback is reachable by every OS user on
@@ -863,7 +896,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         return self._send(200, json.dumps(empty))
                     p = get_project(d)
                     p.title = project_name(d)
-                    if not p.issues:
+                    # First load only: sync inline so a freshly-pinned board shows data
+                    # immediately instead of waiting for the ~45s background sweep. Gate
+                    # on synced_at — NOT `p.issues`, which is legitimately empty for a
+                    # zero-issue repo and for any persistent-error project, so the old
+                    # `if not p.issues` re-synced on every 2s poll forever, driving one gh
+                    # subprocess every 2s from an idle pane. Throttle the never-synced case
+                    # (a persistent error never stamps synced_at) to ~once/SYNC_SECONDS so
+                    # it still retries but can't hammer (#136). Best-effort stamp — the
+                    # sync itself is serialized under p.lock.
+                    if p.synced_at is None and (time.monotonic() - p._first_load_at) >= SYNC_SECONDS:
+                        p._first_load_at = time.monotonic()
                         _safe_sync(p)                      # blocking first load so it shows right away
                     board = p.board()
                 else:                                      # auto: follow the active project
@@ -895,9 +938,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._send(403, '{"ok": false, "error": "missing or invalid token"}')
         path = self.path.split("?")[0]
         try:
-            clen = int(self.headers.get("Content-Length", 0) or 0)
-            if clen > MAX_BODY:
-                return self._send(413, '{"ok": false, "error": "body too large"}')
+            try:
+                clen = int(self.headers.get("Content-Length", 0) or 0)
+            except (TypeError, ValueError):
+                clen = -1
+            # A NEGATIVE Content-Length passed `clen > MAX_BODY` and then made
+            # rfile.read(clen) read until EOF — bypassing the 1 MiB cap entirely. Reject
+            # negative and non-numeric lengths before reading a single byte (#147).
+            if clen < 0 or clen > MAX_BODY:
+                return self._send(413, '{"ok": false, "error": "invalid or oversized body"}')
             body = json.loads(self.rfile.read(clen) or "{}")
             if path == "/active":
                 p = set_active(body.get("session_title"))
