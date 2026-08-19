@@ -19,6 +19,7 @@
     --c-backlog: #2f6fe0;   /* blue */
     --c-progress: #d97706;  /* orange */
     --c-done: #1a9e4b;      /* green */
+    --c-next: #caa43a;      /* amber — the "stale / reconnecting" status dot (#155) */
     --seq-link: #b3afa2;    /* gray sequence connector */
     --seq-badge: #c4c0b3;   /* light gray position badge */
   }
@@ -415,12 +416,15 @@ function toast(msg) {
 }
 
 // Create / edit a card -> POST /api/create or /api/edit (github mode).
-function openEditor(mode, data) {
+function openEditor(mode, data, fixedProj) {
   data = data || {};
   // Capture the target project NOW — the pane can re-render to another project
   // (auto-follow, pin switch) while the modal is open, and a submit-time lookup
-  // would route this card's write to that other repo (#80).
-  const proj = currentProjectId();
+  // would route this card's write to that other repo (#80). On a reopen after a
+  // failed save (#127) the ORIGINAL project is threaded back in via fixedProj, so a
+  // retry can't silently retarget to whatever project the pane switched to while
+  // the write was in flight (#142).
+  const proj = fixedProj !== undefined ? fixedProj : currentProjectId();
   document.getElementById("card-editor")?.remove();
   const m = document.createElement("div");
   m.id = "card-editor";
@@ -454,7 +458,7 @@ function openEditor(mode, data) {
         // discard everything the user typed. Reopen it pre-filled so their title
         // and notes survive and the save is one click away to retry (#127).
         toast(e.message === "403" ? AUTH_TOAST : "Not saved — is the board server running? Reopened your draft.");
-        openEditor(mode, { ...data, title, notes: notesEl.value });
+        openEditor(mode, { ...data, title, notes: notesEl.value }, proj);
       });
   };
   m.querySelector(".ce-save").addEventListener("click", submit);
@@ -977,6 +981,14 @@ document.getElementById("board").addEventListener("click", (e) => {
     pinnedId = item.dataset.id || null;
     document.getElementById("card-editor")?.remove();   // modal targets the OLD project (#80)
     cancelDrag();
+    // pinnedId flipped synchronously, so currentProjectId() now returns the NEW
+    // project — but the OLD project's cards are still in the DOM until the next poll
+    // repaints. Starting an Edit/Tags/drag in that gap would capture the new pin
+    // against an old-project issue number (a wrong-repo write the router only
+    // catches with a 409). Blank the board immediately so there's nothing stale to
+    // interact with; the poll() below repaints the right project within ~1s (#143).
+    const b = document.getElementById("board"); if (b) b.innerHTML = "";
+    renderedProjectId = null;
     const u = new URL(location.href);
     pinnedId ? u.searchParams.set("project", pinnedId) : u.searchParams.delete("project");
     history.replaceState(null, "", u);            // per-pane, survives reloads
