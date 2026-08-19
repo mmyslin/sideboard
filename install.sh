@@ -87,9 +87,12 @@ cat <<EOF
 
 Next:
   • Start a NEW Claude Code session so the updated settings load.
-  • In each project, open the board once — point the preview pane at
-    http://127.0.0.1:7777/roadmap-board.html (e.g. run \`$DEST/sideboard-up.sh\`
-    first, or use the /roadmap command if you have it).
+  • In each project, open the board once. Reads are token-gated, so the board URL
+    must carry the auth token — a bare URL renders an empty, read-only board. Run
+    \`$DEST/sideboard-up.sh\`; it prints the correct
+    http://127.0.0.1:7777/roadmap-board.html?token=... URL — point the preview
+    pane at THAT. (Or build it by hand:
+    http://127.0.0.1:7777/roadmap-board.html?token=\$(cat ~/.claude/sideboard-token).)
   • Switch projects and send a message; each project's pane follows along.
   • Title→directory map lives in ~/.claude/sideboard-projects.json (auto-seeded
     from ~/Documents/Projects; edit it to override or set SIDEBOARD_PROJECTS_ROOT).

@@ -8,9 +8,15 @@
 # github_companion.py left over from before the rename/retirement), reclaim the
 # port and start the router — this is the #35 "wrong server" fix.
 PORT="${SIDEBOARD_PORT:-7777}"                          # keep in step with the router (#102)
-url="http://127.0.0.1:$PORT/roadmap-board.html"
 STATE_DIR="$HOME/.claude"
 mkdir -p "$STATE_DIR" 2>/dev/null                       # log/stamps live here (#91)
+# Print the board URL WITH the auth token: since reads are token-gated (#111), a
+# bare token-less URL renders only a read-only, data-less shell — so handing the
+# user that URL is handing them a broken board (#140). The board reads the token
+# from ?token=; it's the user's own secret shown in their own terminal.
+_tok="$(cat "$STATE_DIR/sideboard-token" 2>/dev/null)"
+url="http://127.0.0.1:$PORT/roadmap-board.html"
+[ -n "$_tok" ] && url="$url?token=$_tok"
 cd "$(dirname "$0")" || exit 1
 
 health()    { curl -sf -m 1 "http://127.0.0.1:$PORT/healthz" 2>/dev/null; }

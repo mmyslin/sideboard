@@ -83,6 +83,14 @@ open it as `roadmap-board.html?token=<TOKEN>` — the `/sideboard:roadmap` comma
 builds that URL for you, so prefer it over typing the bare URL (a token-less pane
 renders but is read-only).
 
+> **Note on the token in `$(cat …)`:** interpolating the secret into a curl
+> command line puts it in world-readable process argv for that call's lifetime. On
+> a shared machine where another OS user could be watching `ps`, prefer piping the
+> header via stdin so only the *filename* hits argv:
+> `{ printf 'X-Sideboard-Token: '; cat ~/.claude/sideboard-token; } | curl … -H @-`.
+> The plugin's own hook already does this (#138); the inline `$(cat …)` form above
+> stays fine for a single-user machine.
+
 ## Referring to cards by number
 `#N` means the **GitHub issue number** — `#10`, "do #10", "move #7 to in
 progress", "close out #3". Resolve it to issue N and act (implement it, change

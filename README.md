@@ -82,8 +82,10 @@ lsof -ti tcp:7777 -sTCP:LISTEN | xargs kill
 Your roadmap lives in GitHub Issues and the committed `.sideboard/meta.json`, so stopping the server loses nothing. To remove the local state Sideboard kept under `~/.claude` (auth token, title→project registry, server log, throttle stamps):
 
 ```bash
-rm -f ~/.claude/sideboard-token ~/.claude/sideboard-projects.json ~/.claude/sideboard-router.log ~/.claude/sideboard-relaunch.stamp ~/.claude/sideboard-heal.stamp
+rm -f ~/.claude/sideboard-token ~/.claude/sideboard-projects.json ~/.claude/sideboard-router.log ~/.claude/sideboard-router.pid ~/.claude/sideboard-*.stamp
 ```
+
+(The `sideboard-*.stamp` glob covers every throttle stamp — relaunch, heal, code-version, and token-warning.)
 
 (Repos keep their committed `.sideboard/meta.json`; if a corrupt or migrated sidecar was ever backed up you may also find `meta.json.*.bak` files beside it — safe to delete.)
 
