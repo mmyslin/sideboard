@@ -6,7 +6,7 @@
     {
       "name": "sideboard",
       "description": "Your GitHub Issues as a live roadmap board pinned beside Claude Code chat — filed, moved, and closed by Claude as you work, plus code-aware commands to suggest, sequence, and clean up the backlog.",
-      "source": { "source": "github", "repo": "mmyslin/sideboard" },
+      "source": "./",
       "author": { "name": "Mark Myslin", "url": "https://github.com/mmyslin" },
       "homepage": "https://github.com/mmyslin/sideboard",
       "license": "MIT",
