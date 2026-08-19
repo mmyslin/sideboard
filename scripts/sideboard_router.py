@@ -67,7 +67,8 @@ TOKEN_PATH = os.path.join(os.path.expanduser("~"), ".claude", "sideboard-token")
 
 def _load_token():
     try:
-        t = open(TOKEN_PATH).read().strip()
+        with open(TOKEN_PATH) as _f:
+            t = _f.read().strip()
         if t:
             return t
     except OSError:
@@ -162,10 +163,14 @@ def _load_registry():
 
 def _save_registry(reg):
     os.makedirs(os.path.dirname(REGISTRY), exist_ok=True)
-    tmp = f"{REGISTRY}.tmp.{os.getpid()}"
+    tmp = f"{REGISTRY}.tmp.{os.getpid()}.{threading.get_ident()}"   # per-thread: two threads racing a registry write must not share one temp (#149)
     with open(tmp, "w") as f:
         json.dump(reg, f, indent=2)
-    os.replace(tmp, REGISTRY)      # atomic; never leaves a torn registry (#77)
+    os.replace(tmp, REGISTRY)      # atomic; never leaves a torn registry (#77). NOTE: exclusion
+                                   # is WITHIN one process (LOCK) + the atomic replace; the design
+                                   # is ONE router (the port bind enforces one-per-port). Running a
+                                   # second router on another port against the same projects is
+                                   # unsupported and can lose updates, though never corrupt (#154).
 
 
 def _migrate_registry():
@@ -447,7 +452,8 @@ class Project:
     def _load_meta(self):
         empty = {"status": {}, "order": [], "tag_colors": {}, "next_color": 0, "sequences": []}
         try:
-            m = json.load(open(self.meta_path))
+            with open(self.meta_path) as _f:
+                m = json.load(_f)
             # Shape coercion lives INSIDE the guarded block: a sidecar that parses as
             # JSON but has the wrong shape (`status` a list, `order` a non-iterable, a
             # top-level array) raises TypeError/AttributeError here, and must be
@@ -507,7 +513,8 @@ class Project:
     def migrate(self):
         """Upgrade an older sidecar to the current schema."""
         try:
-            raw = json.load(open(self.meta_path))
+            with open(self.meta_path) as _f:
+                raw = json.load(_f)
             v = int(raw.get("schema", 0))   # guarded: `schema` null/list, or a top-level
                                             # array (raw.get -> AttributeError), must be
                                             # quarantined, not raise out of migrate() —
@@ -934,7 +941,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # stale/odd pane URL restored on session return still renders the roadmap, not a 404.
         # (The client fetches /roadmap.json absolute, so it loads data even from a nested path.)
         v = str(int(os.path.getmtime(BOARD_HTML)))
-        html = open(BOARD_HTML, encoding="utf-8").read().replace(
+        with open(BOARD_HTML, encoding="utf-8") as _f:
+            html = _f.read()
+        html = html.replace(
             "</head>", f'<script>window.__BV="{v}";</script>\n</head>', 1)
         self._send(200, html, "text/html; charset=utf-8")
 

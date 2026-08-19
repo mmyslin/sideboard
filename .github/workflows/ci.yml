@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Router unit + integration tests
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Router compiles
+        run: python3 -m py_compile scripts/sideboard_router.py
+
+      - name: Shell scripts parse (bash -n)
+        run: |
+          for s in scripts/sideboard-active.sh scripts/sideboard-up.sh install.sh; do
+            bash -n "$s"
+          done
+
+      - name: Board JS parses
+        run: |
+          sed -n '/<script>/,/<\/script>/p' roadmap-board.html | sed '1d;$d' > /tmp/board.js
+          node --check /tmp/board.js
+
+      - name: Manifests are valid JSON
+        run: |
+          for f in .claude-plugin/plugin.json .claude-plugin/marketplace.json hooks/hooks.json; do
+            python3 -c "import json,sys; json.load(open('$f')); print('$f OK')"
+          done
+
+      - name: Plugin version matches a semver
+        run: |
+          python3 - <<'PY'
+          import json, re
+          v = json.load(open(".claude-plugin/plugin.json"))["version"]
+          assert re.fullmatch(r"\d+\.\d+\.\d+", v), f"bad version: {v}"
+          print("version", v, "OK")
+          PY
