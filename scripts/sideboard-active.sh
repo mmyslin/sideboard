@@ -42,6 +42,14 @@ post() {
         -d "$body" 2>/dev/null
 }
 healthz() { curl -sf -m 1 "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1; }
+# Serving-readiness (#160). /healthz only proves the process ANSWERS; a router
+# whose board files were removed (plugin-cache wipe / partial update) keeps
+# answering /healthz but returns an empty reply for the board, stranding the pane
+# on Claude Code's start-page. /ready reflects real servability, so gate relaunch
+# on THIS, not liveness. An older router that predates /ready falls through to its
+# board handler, which errors when the files are gone -> curl -sf fails here too
+# -> we relaunch. So this correctly reclaims a broken-but-alive router of any age.
+serves() { curl -sf -m 1 "http://127.0.0.1:$PORT/ready" >/dev/null 2>&1; }
 
 # PIDs listening on $PORT, one per line. Tries lsof, then ss, then fuser so a box
 # without lsof (slim Linux/Docker) can still reclaim the port instead of looping
@@ -99,7 +107,7 @@ launch() {
   nohup python3 "$HERE/sideboard_router.py" >>"$STATE_DIR/sideboard-router.log" 2>&1 &   # append: racing launches must not truncate each other's log (#105)
   echo $! >"$STATE_DIR/sideboard-router.pid"   # record our router's PID so is_our_router_pid can reclaim it even when ps can't identify it (#151)
   for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do   # wait for readiness (~1.5s cap) instead of a flat sleep 1 (#119)
-    healthz && break
+    serves && break                                  # SERVING, not just alive (#160)
     sleep 0.1
   done
 }
@@ -107,8 +115,10 @@ launch() {
 # Ensure the board server is up BEFORE the title guard, so a titleless session
 # (e.g. SessionStart source=startup, which carries no session_title) still boots
 # it — otherwise the "hook starts the board for you" promise was conditional (#65).
-# Rate-limited to one relaunch/60s.
-if ! healthz; then
+# Rate-limited to one relaunch/60s. Gate on `serves` (real servability), not
+# `healthz`: a router that answers /healthz but can't serve the board must be
+# reclaimed, not left stranding the pane on the start-page (#160).
+if ! serves; then
   last=$(cat "$STATE_DIR/sideboard-relaunch.stamp" 2>/dev/null || echo 0)
   [ "$(( $(date +%s) - last ))" -ge 60 ] && launch
 else
@@ -140,7 +150,7 @@ resp="$(post)"
 # stalled filesystem) is alive and must not be SIGKILLed (#93). Rate-limited to
 # one relaunch/60s: an unthrottled loop would pkill -9 + restart on EVERY
 # prompt — a storm that can itself corrupt sidecars (#60).
-if [ -z "$resp" ] && ! healthz; then
+if [ -z "$resp" ] && ! serves; then     # not serving (dead or broken-but-alive) — reclaim (#160); a serving-but-slow /active router is left alone (#93)
   last=$(cat "$STATE_DIR/sideboard-relaunch.stamp" 2>/dev/null || echo 0)
   [ "$(( $(date +%s) - last ))" -ge 60 ] && { launch; resp="$(post)"; }
 fi

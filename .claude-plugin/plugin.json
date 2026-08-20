@@ -1,7 +1,7 @@
 {
   "name": "sideboard",
   "displayName": "Sideboard",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Your GitHub Issues as a live roadmap board pinned beside Claude Code chat.",
   "author": {
     "name": "Mark Myslin",

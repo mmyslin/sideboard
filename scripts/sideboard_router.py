@@ -891,6 +891,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if self._token_ok():
                 info["active"] = p.title if p else None
             return self._send(200, json.dumps(info))
+        if path == "/ready":
+            # Liveness (/healthz) is not enough: a router can keep answering /healthz
+            # yet be unable to SERVE the board — its files removed by a plugin-cache
+            # wipe or a partial update, the process still running from a now-deleted
+            # path. The launcher/hook probe THIS to decide whether to relaunch, so it
+            # must reflect real servability: stat the board file and require it non-
+            # empty. Unauthenticated like /healthz — it discloses nothing (#160). An
+            # older router that predates this endpoint falls through to the board
+            # handler below, which errors once the files are gone, so the probe still
+            # fails there and triggers a relaunch.
+            try:
+                servable = os.path.exists(BOARD_HTML) and os.path.getsize(BOARD_HTML) > 0
+            except OSError:
+                servable = False
+            return self._send(200 if servable else 503,
+                              json.dumps({"ready": servable, "code_ver": CODE_VER}))
         # /projects and /roadmap.json expose private-repo issue titles/bodies/labels
         # and home-directory project paths, and a first-load /roadmap.json drives gh
         # subprocesses + a sidecar write. Loopback is reachable by every OS user on

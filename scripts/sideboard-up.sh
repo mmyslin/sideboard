@@ -22,6 +22,12 @@ cd "$(dirname "$0")" || exit 1
 health()    { curl -sf -m 1 "http://127.0.0.1:$PORT/healthz" 2>/dev/null; }
 is_router() { printf '%s' "$1" | grep -q '"router": *true'; }
 access_ok() { printf '%s' "$1" | grep -q '"access_ok": *true'; }
+# Real servability, not just liveness: a router that answers /healthz can still be
+# unable to serve the board (files removed by a cache wipe / partial update). Gate
+# the "already up" decision on THIS so a broken-but-alive router gets reclaimed,
+# not reported as fine (#160). Older routers lacking /ready fail it via their board
+# handler once the files are gone, so the probe reclaims them too.
+serves()    { curl -sf -m 1 "http://127.0.0.1:$PORT/ready" >/dev/null 2>&1; }
 
 # PIDs listening on $PORT (lsof → ss → fuser; "NOTOOL" if none exist, #118).
 port_listener_pids() {
@@ -63,11 +69,11 @@ launch() {
   fi
   nohup python3 sideboard_router.py >>"$STATE_DIR/sideboard-router.log" 2>&1 &   # append (#105)
   echo $! >"$STATE_DIR/sideboard-router.pid"   # record our router's PID for ps-independent reclaim (#151)
-  for _ in $(seq 1 40); do is_router "$(health)" && break; sleep 0.05; done   # ready within ~2s
+  for _ in $(seq 1 40); do serves && break; sleep 0.05; done   # wait until SERVING, not just alive (#160), ~2s
 }
 
 h="$(health)"
-if is_router "$h"; then
+if is_router "$h" && serves; then          # our router AND actually serving the board (#160)
   if access_ok "$h"; then
     echo "already up -> $url"
   else
@@ -89,7 +95,7 @@ else
   # (return 1) rather than kill, and printing "started -> url" then would be a lie —
   # the router isn't up and the board would 403/empty (#153).
   if launch; then
-    is_router "$(health)" && echo "started -> $url" || echo "started (warming up) -> $url"
+    serves && echo "started -> $url" || echo "started (warming up) -> $url"   # serving check, not just liveness (#160)
   else
     echo "could NOT start: port $PORT is held by a non-Sideboard process (see $STATE_DIR/sideboard-router.log). Set SIDEBOARD_PORT to run on another port." >&2
     exit 1

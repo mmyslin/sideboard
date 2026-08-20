@@ -220,5 +220,56 @@ class LiveTokenGating(unittest.TestCase):
         self.assertEqual(c.getresponse().status, 413)
 
 
+class ReadyProbe(unittest.TestCase):
+    """Integration for #160: /ready reflects real servability. A router whose board
+    file is removed must keep answering /healthz (it's alive) but fail /ready (it
+    can't serve) — that gap is exactly what strands the pane and what the launcher
+    now probes to relaunch. Uses SIDEBOARD_BOARD_HTML so the test can delete the
+    board out from under a live router without touching the repo's own copy."""
+
+    def setUp(self):
+        self.home = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.home, ".claude"))
+        self.board = os.path.join(self.home, "board.html")
+        with open(self.board, "w") as f:
+            f.write("<html><body>board</body></html>")
+        self.port = 7898
+        env = dict(os.environ, HOME=self.home, SIDEBOARD_PORT=str(self.port),
+                   SIDEBOARD_BOARD_HTML=self.board)
+        self.proc = subprocess.Popen([sys.executable, ROUTER], env=env,
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.base = f"http://127.0.0.1:{self.port}"
+        for _ in range(50):
+            try:
+                urllib.request.urlopen(self.base + "/healthz", timeout=1).read()
+                break
+            except Exception:
+                time.sleep(0.1)
+
+    def tearDown(self):
+        self.proc.terminate()
+        try:
+            self.proc.wait(timeout=5)
+        except Exception:
+            self.proc.kill()
+
+    def _code(self, path):
+        try:
+            return urllib.request.urlopen(self.base + path, timeout=3).status
+        except urllib.error.HTTPError as e:
+            return e.code
+
+    def test_ready_tracks_board_file(self):
+        # servable: both green
+        self.assertEqual(self._code("/healthz"), 200)
+        self.assertEqual(self._code("/ready"), 200)
+        # remove the board out from under the live router -> it's still alive
+        # (/healthz 200) but can no longer serve (/ready 503). This is the broken-
+        # but-alive router the old /healthz-only check missed (#160).
+        os.remove(self.board)
+        self.assertEqual(self._code("/healthz"), 200)
+        self.assertEqual(self._code("/ready"), 503)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
