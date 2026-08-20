@@ -1,8 +1,8 @@
 {
   "name": "sideboard",
   "displayName": "Sideboard",
-  "version": "0.5.2",
-  "description": "Your GitHub Issues as a live roadmap board pinned beside Claude Code chat.",
+  "version": "0.5.3",
+  "description": "Your GitHub Issues as a live roadmap board pinned beside Claude Code chat. Runs a local 127.0.0.1 board server and adds SessionStart/UserPromptSubmit hooks so the pane follows your active project.",
   "author": {
     "name": "Mark Myslin",
     "url": "https://github.com/mmyslin"

@@ -71,6 +71,15 @@ def _load_token():
         with open(TOKEN_PATH) as _f:
             t = _f.read().strip()
         if t:
+            # Enforce 0600 on an EXISTING token file too, not just on creation: a
+            # file that predates this code or was created by hand could be group/
+            # world-readable, exposing the write+read secret to any co-resident OS
+            # user. Tighten it every load; best-effort (a foreign-owned file we
+            # can't chmod just fails silently, and the secret was already theirs).
+            try:
+                os.chmod(TOKEN_PATH, 0o600)
+            except OSError:
+                pass
             return t
     except OSError:
         pass

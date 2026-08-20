@@ -5,7 +5,7 @@
   "plugins": [
     {
       "name": "sideboard",
-      "description": "Your GitHub Issues as a live roadmap board pinned beside Claude Code chat — filed, moved, and closed by Claude as you work, plus code-aware commands to suggest, sequence, and clean up the backlog.",
+      "description": "Your GitHub Issues as a live roadmap board pinned beside Claude Code chat — filed, moved, and closed by Claude as you work, plus code-aware commands to suggest, sequence, and clean up the backlog. Runs a local board server on 127.0.0.1 and installs session hooks (SessionStart/UserPromptSubmit) so the pane follows your active project.",
       "source": "./",
       "author": { "name": "Mark Myslin", "url": "https://github.com/mmyslin" },
       "homepage": "https://github.com/mmyslin/sideboard",
