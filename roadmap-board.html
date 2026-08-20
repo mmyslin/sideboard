@@ -203,6 +203,16 @@
   .card.open .notes { display: block; }
   .card .ref { color: var(--muted); margin-top: 3px; font-size: 9px; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
   .empty { color: var(--muted); font-size: 10px; font-style: italic; padding: 1px 3px; }
+  /* Shown when no project is being served (auto-follow, nothing active) instead of
+     a silent empty "Roadmap" that reads as broken (#159). */
+  .board-cta { margin: auto; display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 24px; text-align: center; color: var(--muted); }
+  .board-cta-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .board-cta-btn {
+    font-size: 12px; padding: 6px 13px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--accent); background: var(--accent); color: #fff; font-family: inherit;
+  }
+  .board-cta-btn:hover { filter: brightness(1.06); }
+  .board-cta-sub { font-size: 11px; max-width: 240px; line-height: 1.4; }
   @keyframes fadein { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
   #toast {
     position: fixed; left: 50%; bottom: 10px;
@@ -610,6 +620,20 @@ function render(data) {
   document.getElementById("project").textContent = data.project || "Roadmap";
   document.title = "Roadmap";   // fixed title — project can change under a single pane (#37 reverted)
   const board = document.getElementById("board");
+  // Auto-follow with nothing active (and not pinned, no error): show a call-to-
+  // action pointing at the switcher instead of a silent empty board (#159). The
+  // router auto-serves a lone project (#157), so this appears only when 0 or >1
+  // projects exist and none is active — where "pick one" is the right guidance.
+  if (!data.project && !pinnedId && !data.error) {
+    board.className = "board";
+    board.innerHTML = `<div class="board-cta">
+        <div class="board-cta-title">No project selected</div>
+        <button type="button" class="board-cta-btn" id="cta-pick">Choose a project ▾</button>
+        <div class="board-cta-sub">Pick one from the <b>Project</b> menu at the top to see its roadmap.</div>
+      </div>`;
+    document.getElementById("cta-pick")?.addEventListener("click", () => document.getElementById("proj-btn")?.click());
+    return;
+  }
   const _blRefs = new Set((data.items || []).filter(i => i.status === "backlog").map(i => i.ref));   // #53: roomy only when a
   board.classList.toggle("has-sequences",                                                            // Backlog connector is actually drawn (>=2 members in Backlog)
     (data.sequences || []).some(s => (s.items || []).filter(n => _blRefs.has(n)).length >= 2));

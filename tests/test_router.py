@@ -220,6 +220,72 @@ class LiveTokenGating(unittest.TestCase):
         self.assertEqual(c.getresponse().status, 413)
 
 
+class CwdResolution(unittest.TestCase):
+    """#158: the opened folder (cwd) resolves to its project, wins over the title,
+    walks up from a subfolder, and yields nothing for a non-project dir (so the
+    caller falls back to title matching — the $HOME-cwd setups)."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.proj = os.path.join(self.root, "myproj")
+        os.makedirs(os.path.join(self.proj, ".sideboard"))
+        with open(os.path.join(self.proj, ".sideboard", "meta.json"), "w") as f:
+            f.write("{}")
+        self._root, self._reg = sbr.PROJECTS_ROOT, sbr.REGISTRY
+        sbr.PROJECTS_ROOT = self.root
+        sbr.REGISTRY = os.path.join(self.root, "absent-registry.json")
+
+    def tearDown(self):
+        sbr.PROJECTS_ROOT, sbr.REGISTRY = self._root, self._reg
+
+    def _real(self, p):
+        return os.path.realpath(p) if p else p
+
+    def test_cwd_exact_dir_resolves(self):
+        self.assertEqual(self._real(sbr.resolve_dir(None, self.proj)), self._real(self.proj))
+
+    def test_cwd_subdir_walks_up(self):
+        sub = os.path.join(self.proj, "src", "deep")
+        os.makedirs(sub)
+        self.assertEqual(self._real(sbr.resolve_dir(None, sub)), self._real(self.proj))
+
+    def test_cwd_wins_over_title(self):
+        self.assertEqual(self._real(sbr.resolve_dir("some unrelated title", self.proj)), self._real(self.proj))
+
+    def test_non_project_cwd_yields_none(self):
+        self.assertIsNone(sbr.resolve_dir(None, tempfile.mkdtemp()))
+
+
+class SingleProjectAutoSelect(unittest.TestCase):
+    """#157: _single_project_dir returns the lone project, else None (0 or >1)."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self._root, self._reg = sbr.PROJECTS_ROOT, sbr.REGISTRY
+        sbr.PROJECTS_ROOT = self.root
+        sbr.REGISTRY = os.path.join(self.root, "absent-registry.json")
+
+    def tearDown(self):
+        sbr.PROJECTS_ROOT, sbr.REGISTRY = self._root, self._reg
+
+    def _mkproj(self, name):
+        os.makedirs(os.path.join(self.root, name, ".sideboard"))
+        with open(os.path.join(self.root, name, ".sideboard", "meta.json"), "w") as f:
+            f.write("{}")
+
+    def test_none_when_zero(self):
+        self.assertIsNone(sbr._single_project_dir())
+
+    def test_returns_the_one(self):
+        self._mkproj("only")
+        self.assertEqual(os.path.realpath(sbr._single_project_dir()),
+                         os.path.realpath(os.path.join(self.root, "only")))
+
+    def test_none_when_multiple(self):
+        self._mkproj("a"); self._mkproj("b")
+        self.assertIsNone(sbr._single_project_dir())
+
+
 class ReadyProbe(unittest.TestCase):
     """Integration for #160: /ready reflects real servability. A router whose board
     file is removed must keep answering /healthz (it's alive) but fail /ready (it

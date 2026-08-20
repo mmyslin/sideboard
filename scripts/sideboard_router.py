@@ -197,8 +197,34 @@ def _candidate_dirs():
     return out
 
 
-def resolve_dir(title):
-    """Map a session title to a project dir. Registry wins (user-editable override);
+def _project_dir_for_cwd(cwd):
+    """The project dir for a session's working directory, or None. The folder the
+    user OPENED is the strongest signal of which project they mean (#158) — but in
+    a $HOME-cwd setup it resolves to nothing, so callers fall back to title
+    matching. Walks up from cwd so an opened SUBfolder still resolves; accepts a
+    direct child of PROJECTS_ROOT that bears a sidecar (the discovery model) or any
+    registry-mapped dir. cwd comes from the local hook payload, not a browser."""
+    if not cwd:
+        return None
+    try:
+        d = os.path.realpath(cwd)
+        root = os.path.realpath(PROJECTS_ROOT)
+    except OSError:
+        return None
+    reg = {os.path.realpath(p) for p in _load_registry().values()}
+    while True:
+        if d in reg or (os.path.dirname(d) == root and _has_sidecar(d)):
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:          # reached the filesystem root — no project above cwd
+            return None
+        d = parent
+
+
+def resolve_dir(title, cwd=None):
+    """Map a session to a project dir. The opened folder (cwd) wins when it resolves
+    to a project (#158); otherwise fall back to the session title. For the title:
+    registry wins (user-editable override);
     else the dir whose name tokens best overlap the title, requiring a STRICT
     MAJORITY of the dir's tokens (>0.5) and breaking ties toward the more-specific
     dir (more matched tokens). Only full-coverage (1.0) matches are cached; fuzzier
@@ -207,6 +233,9 @@ def resolve_dir(title):
     The strict-majority rule fixes two mis-bindings: a single-token dir (`sideboard`)
     only matches on a full hit, not as a subset of `sideboard-docs`; and a generic
     token (`tracker`) no longer half-matches any title mentioning it."""
+    d = _project_dir_for_cwd(cwd)      # the opened folder is the strongest signal (#158)
+    if d:
+        return d
     if not title:
         return None
     mapped = _load_registry().get(title)
@@ -303,19 +332,32 @@ def project_by_id(pid):
     return d
 
 
-def list_projects():
-    """All Sideboard projects — sidecar dirs under PROJECTS_ROOT plus registry-
-    mapped dirs outside it (#81) — for the board's switcher dropdown."""
-    active = STATE["active"]
+def _all_project_dirs():
+    """All Sideboard project dirs — sidecar dirs under PROJECTS_ROOT plus registry-
+    mapped dirs outside it (#81), deduped by realpath."""
     dirs = list(_candidate_dirs())
     seen = {os.path.realpath(d) for d in dirs}
     for p in _load_registry().values():
         if os.path.isdir(p) and os.path.realpath(p) not in seen:
             seen.add(os.path.realpath(p))
             dirs.append(p)
+    return dirs
+
+
+def _single_project_dir():
+    """The sole project dir when exactly one exists, else None. Lets an auto-follow
+    board show that one project instead of a blank 'Roadmap' when nothing is active
+    yet — the common single-project first-run case (#157)."""
+    dirs = _all_project_dirs()
+    return dirs[0] if len(dirs) == 1 else None
+
+
+def list_projects():
+    """All Sideboard projects for the board's switcher dropdown."""
+    active = STATE["active"]
     return [{"id": project_id(d), "name": project_name(d),
              "active": bool(active) and active.path == d}
-            for d in dirs]
+            for d in _all_project_dirs()]
 
 
 # ---- macOS TCC / permission resilience (#46) -------------------------------
@@ -820,13 +862,15 @@ def _safe_sync(p):
         print(f"[router] sync error ({p.path}): {e}", file=sys.stderr, flush=True)
 
 
-def set_active(title):
-    """Switch the served board to the project for `title`. Returns the Project or None."""
-    path = resolve_dir(title)
+def set_active(title, cwd=None):
+    """Switch the served board to the project for `title`/`cwd`. Returns the Project or None."""
+    path = resolve_dir(title, cwd)
     if not path:
         return None
     p = get_project(path)
-    p.title = title
+    # A cwd-only resolution (a titleless session, #158) has no session title to
+    # display — fall back to the project's name so the board shows it, not a blank.
+    p.title = title or project_name(path)
     with LOCK:
         changed = p is not STATE["active"]
         STATE["active"] = p
@@ -944,6 +988,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     board = p.board()
                 else:                                      # auto: follow the active project
                     p = STATE["active"]
+                    if p is None:
+                        # Nothing active yet (fresh session, title/cwd not resolved).
+                        # If exactly one project exists, serve it instead of a blank
+                        # board — the common single-project first run (#157). Doesn't
+                        # set STATE["active"] (the hook owns that via /active); just
+                        # avoids stranding the user on an empty "Roadmap".
+                        only = _single_project_dir()
+                        if only:
+                            p = get_project(only)
+                            p.title = project_name(only)
+                            if p.synced_at is None and (time.monotonic() - p._first_load_at) >= SYNC_SECONDS:
+                                p._first_load_at = time.monotonic()
+                                _safe_sync(p)
                     board = p.board() if p else empty
             except Exception as e:
                 print(f"[router] board error (project={pid}): {e}", file=sys.stderr, flush=True)
@@ -984,7 +1041,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._send(413, '{"ok": false, "error": "invalid or oversized body"}')
             body = json.loads(self.rfile.read(clen) or "{}")
             if path == "/active":
-                p = set_active(body.get("session_title"))
+                p = set_active(body.get("session_title"), body.get("cwd"))   # cwd wins when it's a project (#158)
                 return self._send(200, json.dumps({"ok": True, "project": p.title if p else None,
                                                     "dir": p.path if p else None, "access_ok": access_ok()}))
             # Route the write to the project the pane is SHOWING (its rendered/pinned

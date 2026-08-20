@@ -2,9 +2,11 @@
 # Sideboard activity hook — tell the router which project is active.
 #
 # Wired to Claude Code's SessionStart + UserPromptSubmit hooks. Reads the hook
-# JSON on stdin, extracts the session TITLE (the only reliable project signal in
-# this setup — cwd is always $HOME), and POSTs it to the router so the pinned
-# preview pane follows whatever project you're working in. Fire-and-forget;
+# JSON on stdin, extracts the session TITLE and the working directory (cwd), and
+# POSTs both to the router so the pinned preview pane follows whatever project
+# you're working in. The router resolves cwd first (the folder you opened is the
+# clearest signal, #158) and falls back to the title (needed where cwd is always
+# $HOME and can't distinguish projects). Fire-and-forget;
 # boots the router if it's down. Always exits 0 so it never FAILS the prompt;
 # latency is bounded (a readiness wait plus short-timeout curls) and hard-capped
 # by the `timeout` set on the hook in hooks.json (#119).
@@ -18,10 +20,15 @@ payload=$(cat)
 body=$(printf '%s' "$payload" | python3 -c "
 import sys, json
 try:
-    t = (json.load(sys.stdin).get('session_title') or '').strip()
+    d = json.load(sys.stdin)
+    t = (d.get('session_title') or '').strip()
+    c = (d.get('cwd') or '').strip()      # the folder the session opened — the router resolves by it first (#158)
 except Exception:
-    t = ''
-print(json.dumps({'session_title': t}) if t else '')
+    t = c = ''
+out = {}
+if t: out['session_title'] = t
+if c: out['cwd'] = c
+print(json.dumps(out) if out else '')
 " 2>/dev/null)
 
 # POST the active project; echo the JSON reply (empty if the router is unreachable).
@@ -141,7 +148,8 @@ else
   fi
 fi
 
-# No title (e.g. SessionStart source=startup) → router is up, but nothing to route.
+# Nothing to route (no title AND no cwd, e.g. a bare startup payload) → router is
+# up, but there's nothing to switch to. A cwd-only payload still routes (#158).
 [ -z "$body" ] && exit 0
 
 resp="$(post)"
