@@ -61,8 +61,9 @@ except OSError:
 # endpoints AND the data-bearing reads (which expose private-repo issue content
 # and home-dir paths, #111) require a per-install secret that lives in a 0600
 # file only this user can read. It persists across restarts so a restored pane
-# URL (which carries the token) stays valid. Only the static board shell and
-# /healthz are unauthenticated — neither reveals repo data.
+# URL (which carries the token) stays valid. Only the static board shell,
+# /healthz, and /ready (#160) are unauthenticated — none reveals repo data:
+# /ready returns just a servable-boolean and the script mtime, /healthz liveness.
 TOKEN_PATH = os.path.join(os.path.expanduser("~"), ".claude", "sideboard-token")
 
 def _load_token():
@@ -957,7 +958,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # the machine, so gate these reads on the same 0600 token the writes use — a
         # co-resident user can no longer curl out another user's private issues or
         # force gh side-effects. The board sends the header from its ?token= URL; the
-        # static shell and /healthz stay open so the pane still renders + self-heals (#111).
+        # static shell, /healthz, and /ready stay open so the pane still renders + self-heals (#111).
         if path in ("/projects", "/roadmap.json") and not self._token_ok():
             return self._send(403, '{"ok": false, "error": "missing or invalid token"}')
         if path == "/projects":
