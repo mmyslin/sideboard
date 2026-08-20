@@ -17,6 +17,7 @@ the board by reconciling the sidecar against `gh issue list`.
   python3 sideboard_router.py     # serve :7777, follow the active project
 """
 import hmac, json, os, re, secrets, sys, shutil, subprocess, threading, time, datetime, uuid, http.server, urllib.parse
+import concurrent.futures
 
 HOME = os.path.expanduser("~")
 ROUTER_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1143,11 +1144,52 @@ def sync_loop():
                 _safe_sync(p)
 
 
+class BoundedThreadingHTTPServer(http.server.HTTPServer):
+    """Serve requests on a FIXED pool of worker threads instead of
+    ThreadingHTTPServer's unbounded thread-per-connection (#162): a flood of slow
+    loopback connections can no longer exhaust threads/memory. When every worker is
+    busy the accept loop simply waits for one to free — the kernel's (enlarged)
+    listen backlog absorbs the burst and refuses only true excess, so nothing is
+    queued unboundedly in-process. Normal use is a handful of concurrent requests
+    (a 2s board poll, the hook, a few panes), far below the cap, so it never blocks
+    in practice. Loopback-only bind + the 30s per-request read timeout keep any
+    backlog short."""
+    request_queue_size = 128     # larger listen backlog so a burst waits, not refused, while the pool drains
+    MAX_WORKERS = int(os.environ.get("SIDEBOARD_MAX_WORKERS", "32"))
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self._pool = concurrent.futures.ThreadPoolExecutor(
+            max_workers=self.MAX_WORKERS, thread_name_prefix="sb-http")
+        self._slots = threading.BoundedSemaphore(self.MAX_WORKERS)
+
+    def process_request(self, request, client_address):
+        self._slots.acquire()        # blocks the accept loop when saturated -> kernel backlog bounds the rest
+        try:
+            self._pool.submit(self._run, request, client_address)
+        except Exception:            # pool shutting down, etc. — don't leak the slot
+            self._slots.release()
+            raise
+
+    def _run(self, request, client_address):
+        try:
+            self.finish_request(request, client_address)
+        except Exception:
+            self.handle_error(request, client_address)
+        finally:
+            self.shutdown_request(request)
+            self._slots.release()
+
+    def server_close(self):
+        super().server_close()
+        self._pool.shutdown(wait=False)
+
+
 if __name__ == "__main__":
     _migrate_registry()
     threading.Thread(target=sync_loop, daemon=True).start()
     try:
-        server = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+        server = BoundedThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     except OSError as e:
         print(f"[router] not starting — port {PORT} busy ({e}); another instance likely won.",
               file=sys.stderr, flush=True)

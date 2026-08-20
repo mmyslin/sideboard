@@ -286,6 +286,59 @@ class SingleProjectAutoSelect(unittest.TestCase):
         self.assertIsNone(sbr._single_project_dir())
 
 
+class BoundedConcurrency(unittest.TestCase):
+    """#162: the router serves on a bounded worker pool. Under a small cap, a burst
+    of concurrent requests still ALL complete (they pace behind the semaphore and
+    the enlarged listen backlog, never dropped) — proving the bound serializes work
+    without losing requests."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.home = tempfile.mkdtemp()
+        os.makedirs(os.path.join(cls.home, ".claude"))
+        cls.port = 7896
+        env = dict(os.environ, HOME=cls.home, SIDEBOARD_PORT=str(cls.port),
+                   SIDEBOARD_MAX_WORKERS="2")   # tiny cap so the burst must pace behind it
+        cls.proc = subprocess.Popen([sys.executable, ROUTER], env=env,
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        cls.base = f"http://127.0.0.1:{cls.port}"
+        for _ in range(50):
+            try:
+                urllib.request.urlopen(cls.base + "/healthz", timeout=1).read()
+                break
+            except Exception:
+                time.sleep(0.1)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.proc.terminate()
+        try:
+            cls.proc.wait(timeout=5)
+        except Exception:
+            cls.proc.kill()
+
+    def test_burst_all_complete_under_small_cap(self):
+        import threading as _threading
+        results = []
+        lock = _threading.Lock()
+
+        def hit():
+            try:
+                code = urllib.request.urlopen(self.base + "/healthz", timeout=5).status
+            except Exception as e:
+                code = repr(e)
+            with lock:
+                results.append(code)
+
+        threads = [_threading.Thread(target=hit) for _ in range(24)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=10)
+        self.assertEqual(len(results), 24)
+        self.assertTrue(all(r == 200 for r in results), results)
+
+
 class ReadyProbe(unittest.TestCase):
     """Integration for #160: /ready reflects real servability. A router whose board
     file is removed must keep answering /healthz (it's alive) but fail /ready (it
